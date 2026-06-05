@@ -28,6 +28,7 @@ Thumbs.db
 
 # Generated review & issue files
 *.md
+!README.md
 !docs/*.md
 !configs/*.yaml
 
