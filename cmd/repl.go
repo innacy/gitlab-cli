@@ -146,19 +146,29 @@ func (r *replState) waitForCache() []models.ProjectInfo {
 	return result
 }
 
+const startupProjectLimit = 10
+
 func (r *replState) fetchProjectCache() {
 	if r.cacheReady != nil {
 		defer close(r.cacheReady)
 	}
-	r.refreshCache()
+	r.refreshCacheWithLimit(startupProjectLimit)
 }
 
 func (r *replState) refreshCache() {
+	r.refreshCacheWithLimit(0)
+}
+
+func (r *replState) refreshCacheWithLimit(limit int) {
 	var projects []models.ProjectInfo
 	var err error
 
 	if r.lastRefreshTime.IsZero() {
-		projects, err = r.provider.Repos().ListProjects()
+		if limit > 0 {
+			projects, err = r.provider.Repos().ListRecentProjects(limit)
+		} else {
+			projects, err = r.provider.Repos().ListProjects()
+		}
 	} else {
 		projects, err = r.provider.Repos().ListProjectsSince(r.lastRefreshTime, 1)
 	}
@@ -168,10 +178,8 @@ func (r *replState) refreshCache() {
 
 	r.cacheMu.Lock()
 	if r.lastRefreshTime.IsZero() {
-		// First load: replace cache entirely
 		r.projectCache = r.filterByTeam(projects)
 	} else {
-		// Merge updated projects into existing cache
 		r.mergeIntoCache(r.filterByTeam(projects))
 	}
 
@@ -216,6 +224,29 @@ func (r *replState) mergeIntoCache(updated []models.ProjectInfo) {
 
 func (r *replState) refreshCacheAsync() {
 	go r.refreshCache()
+}
+
+func (r *replState) ensureFullCache() []models.ProjectInfo {
+	if r.cacheReady != nil {
+		select {
+		case <-r.cacheReady:
+		case <-time.After(30 * time.Second):
+		}
+	}
+
+	r.cacheMu.RLock()
+	count := len(r.projectCache)
+	r.cacheMu.RUnlock()
+
+	if count <= startupProjectLimit {
+		r.refreshCacheWithLimit(0)
+	}
+
+	r.cacheMu.RLock()
+	defer r.cacheMu.RUnlock()
+	result := make([]models.ProjectInfo, len(r.projectCache))
+	copy(result, r.projectCache)
+	return result
 }
 
 func (r *replState) syncProjectCache() {

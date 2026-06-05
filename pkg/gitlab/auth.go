@@ -75,6 +75,27 @@ func (c *Client) ListProjects() ([]models.ProjectInfo, error) {
 	return c.listProjectsOpts(nil, 0)
 }
 
+// ListRecentProjects returns the most recently active projects, limited to the
+// given count. It fetches only enough pages to fill the limit.
+func (c *Client) ListRecentProjects(limit int) ([]models.ProjectInfo, error) {
+	if limit <= 0 {
+		return c.ListProjects()
+	}
+	perPage := limit
+	if perPage > 100 {
+		perPage = 100
+	}
+	maxPages := (limit + perPage - 1) / perPage
+	projects, err := c.listProjectsOpts(nil, maxPages)
+	if err != nil {
+		return nil, err
+	}
+	if len(projects) > limit {
+		projects = projects[:limit]
+	}
+	return projects, nil
+}
+
 // ListProjectsSince returns only projects with activity after the given time.
 // maxPages caps pagination (0 = unlimited).
 func (c *Client) ListProjectsSince(since time.Time, maxPages int) ([]models.ProjectInfo, error) {

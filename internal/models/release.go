@@ -18,6 +18,8 @@ type ProjectReleaseInfo struct {
 	CommitsAhead      int
 	LastDevCommitDate time.Time
 	InvalidReason     string
+	DevBranch         string
+	MasterBranch      string
 }
 
 type ReleaseReport struct {
