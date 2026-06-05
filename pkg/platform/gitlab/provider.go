@@ -531,6 +531,10 @@ func (s *repoService) ListProjects() ([]models.ProjectInfo, error) {
 	return s.p.client.ListProjects()
 }
 
+func (s *repoService) ListRecentProjects(limit int) ([]models.ProjectInfo, error) {
+	return s.p.client.ListRecentProjects(limit)
+}
+
 func (s *repoService) ListProjectsSince(since time.Time, maxPages int) ([]models.ProjectInfo, error) {
 	return s.p.client.ListProjectsSince(since, maxPages)
 }

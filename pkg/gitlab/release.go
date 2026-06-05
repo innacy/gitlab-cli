@@ -42,6 +42,8 @@ func (c *Client) CheckProjectRelease(projectID int, projectPath string) models.P
 	}
 
 	info.LatestTag = c.getLatestTag(projectID)
+	info.DevBranch = devBranch
+	info.MasterBranch = masterBranch
 
 	if len(compare.Commits) > 0 {
 		info.Status = models.ReleasePending

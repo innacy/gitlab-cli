@@ -259,6 +259,99 @@ func (r *replState) promptForChoice(title string, options []string) int {
 	return r.interactiveSelect(title, options)
 }
 
+// promptForMultiSelect presents items in batches with a "Select all", individual toggles,
+// and a "Skip" option per batch. Returns the selected indices from the original items slice.
+func (r *replState) promptForMultiSelect(title string, items []string, batchSize int) []int {
+	if len(items) == 0 {
+		return nil
+	}
+	if batchSize <= 0 {
+		batchSize = 10
+	}
+
+	type indexedItem struct {
+		originalIdx int
+		label       string
+	}
+
+	var selected []int
+
+	for offset := 0; offset < len(items); {
+		end := offset + batchSize
+		if end > len(items) {
+			end = len(items)
+		}
+
+		batchLabel := title
+		if len(items) > batchSize {
+			batchLabel = fmt.Sprintf("%s (%d–%d of %d)", title, offset+1, end, len(items))
+		}
+
+		available := make([]indexedItem, end-offset)
+		for i := offset; i < end; i++ {
+			available[i-offset] = indexedItem{originalIdx: i, label: items[i]}
+		}
+
+		batchHasSelection := false
+
+		for {
+			options := make([]string, 0, len(available)+3)
+			options = append(options, "Select all in this batch")
+			for _, item := range available {
+				options = append(options, item.label)
+			}
+			if batchHasSelection {
+				options = append(options, "Done with this batch")
+				options = append(options, "Skip rest")
+			} else {
+				options = append(options, "Skip")
+			}
+
+			choice := r.interactiveSelect(batchLabel, options)
+			if choice < 0 {
+				if batchHasSelection {
+					break
+				}
+				return selected
+			}
+			if batchHasSelection {
+				if choice == len(options)-1 { // "Skip rest"
+					return selected
+				}
+				if choice == len(options)-2 { // "Done with this batch"
+					break
+				}
+			} else {
+				if choice == len(options)-1 { // "Skip"
+					break
+				}
+			}
+
+			if choice == 0 {
+				for _, item := range available {
+					selected = append(selected, item.originalIdx)
+				}
+				output.PrintSuccess(fmt.Sprintf("Selected all %d items in this batch", len(available)))
+				break
+			}
+
+			itemIdx := choice - 1
+			selected = append(selected, available[itemIdx].originalIdx)
+			output.PrintSuccess(fmt.Sprintf("Selected: %s", available[itemIdx].label))
+			batchHasSelection = true
+
+			available = append(available[:itemIdx], available[itemIdx+1:]...)
+			if len(available) == 0 {
+				break
+			}
+		}
+
+		offset = end
+	}
+
+	return selected
+}
+
 func (r *replState) promptForYesNo(question string) bool {
 	choice := r.interactiveSelect(question, []string{"Yes", "No"})
 	return choice == 0

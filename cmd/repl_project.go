@@ -23,20 +23,15 @@ func (r *replState) handleList() {
 		return
 	}
 
-	projects := r.waitForCache()
+	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
+	s.Suffix = " Fetching projects..."
+	s.Start()
+	projects := r.ensureFullCache()
+	s.Stop()
+
 	if len(projects) == 0 {
-		s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-		s.Suffix = " Fetching projects..."
-		s.Start()
-
-		var err error
-		projects, err = r.provider.Repos().ListProjects()
-		s.Stop()
-
-		if err != nil {
-			output.PrintError(fmt.Sprintf("Failed to list projects: %v", err))
-			return
-		}
+		output.PrintWarning("No projects found.")
+		return
 	}
 
 	output.PrintProjectsTable(projects)
@@ -573,32 +568,10 @@ func (r *replState) handleTicketsBlack(args []string) {
 }
 
 func (r *replState) allTeamProjects() []models.ProjectInfo {
-	projects := r.waitForCache()
+	projects := r.ensureFullCache()
 	if len(projects) == 0 {
-		s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-		s.Suffix = " Fetching projects..."
-		s.Start()
-
-		fetched, err := r.provider.Repos().ListProjects()
-		s.Stop()
-		if err != nil {
-			output.PrintError(fmt.Sprintf("Failed to list projects: %v", err))
-			return nil
-		}
-
-		team := strings.ToLower(strings.TrimSpace(r.activeTeam))
-		if team != "" {
-			filtered := make([]models.ProjectInfo, 0, len(fetched))
-			for _, p := range fetched {
-				path := strings.ToLower(p.Path)
-				if strings.HasPrefix(path, team+"/") || strings.Contains(path, "/"+team+"/") {
-					filtered = append(filtered, p)
-				}
-			}
-			projects = filtered
-		} else {
-			projects = fetched
-		}
+		output.PrintWarning("No projects found.")
+		return nil
 	}
 
 	return r.filterIgnoredProjects(projects)
@@ -630,28 +603,17 @@ func (r *replState) handleRelease() {
 		return
 	}
 
-	projects := r.waitForCache()
-	if len(projects) == 0 {
-		s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-		s.Suffix = " Fetching projects..."
-		s.Start()
-
-		var err error
-		projects, err = r.provider.Repos().ListProjects()
-		s.Stop()
-
-		if err != nil {
-			output.PrintError(fmt.Sprintf("Failed to list projects: %v", err))
-			return
-		}
-	}
+	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
+	s.Suffix = " Fetching all projects for release check..."
+	s.Start()
+	projects := r.ensureFullCache()
+	s.Stop()
 
 	if len(projects) == 0 {
 		output.PrintWarning("No projects found.")
 		return
 	}
 
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
 	s.Suffix = fmt.Sprintf(" Checking release status for %d projects...", len(projects))
 	s.Start()
 
@@ -687,11 +649,15 @@ func (r *replState) handleRelease() {
 
 	s.Stop()
 
+	cutoff := time.Now().AddDate(0, 0, -90)
+
 	report := &models.ReleaseReport{GeneratedAt: time.Now()}
 	for _, info := range results {
 		switch info.Status {
 		case models.ReleasePending:
-			report.Pending = append(report.Pending, info)
+			if !info.LastDevCommitDate.IsZero() && info.LastDevCommitDate.After(cutoff) {
+				report.Pending = append(report.Pending, info)
+			}
 		case models.ReleaseUpToDate:
 			report.Released = append(report.Released, info)
 		case models.ReleaseInvalid:
@@ -699,7 +665,6 @@ func (r *replState) handleRelease() {
 		}
 	}
 
-	// Sort pending items by last dev commit date descending (most recent first).
 	sort.Slice(report.Pending, func(i, j int) bool {
 		return report.Pending[i].LastDevCommitDate.After(report.Pending[j].LastDevCommitDate)
 	})
@@ -719,4 +684,55 @@ func (r *replState) handleRelease() {
 	fmt.Println()
 
 	r.stats.filesCreated++
+
+	if len(report.Pending) > 0 {
+		r.releaseCreateMRs(report.Pending)
+	}
+}
+
+func (r *replState) releaseCreateMRs(pending []models.ProjectReleaseInfo) {
+	if !r.promptForYesNo(fmt.Sprintf("Raise release MRs for %d pending repos?", len(pending))) {
+		return
+	}
+
+	items := make([]string, len(pending))
+	for i, p := range pending {
+		items[i] = fmt.Sprintf("%s  (%d commits, last: %s)",
+			p.Name, p.CommitsAhead, output.TimeAgo(p.LastDevCommitDate))
+	}
+
+	indices := r.promptForMultiSelect("Select repos for release MR", items, 10)
+	if len(indices) == 0 {
+		output.PrintWarning("No repos selected.")
+		return
+	}
+
+	currentMonth := time.Now().Format("January")
+	mrTitle := fmt.Sprintf("Release - %s", currentMonth)
+	mrDesc := fmt.Sprintf("This is a release MR for %s release.", currentMonth)
+
+	fmt.Println()
+	output.PrintSuccess(fmt.Sprintf("Creating release MRs for %d repo(s)...", len(indices)))
+	fmt.Println()
+
+	for _, idx := range indices {
+		p := pending[idx]
+		sourceBranch := p.DevBranch
+		targetBranch := p.MasterBranch
+
+		s := newSpinner(fmt.Sprintf(" Creating MR: %s → %s in '%s'...", sourceBranch, targetBranch, p.Name))
+		s.Start()
+		mr, err := r.provider.MRs().CreateMergeRequest(p.Path, sourceBranch, targetBranch, mrTitle, mrDesc)
+		s.Stop()
+
+		if err != nil {
+			output.PrintError(fmt.Sprintf("%s: Failed to create MR: %v", p.Name, err))
+			continue
+		}
+
+		output.PrintSuccess(fmt.Sprintf("%s: MR !%d created", p.Name, mr.IID))
+		output.PrintURL(mr.WebURL)
+		r.stats.mrsCreated++
+	}
+	fmt.Println()
 }

@@ -106,6 +106,7 @@ type UpdateIssueOptions struct {
 
 type RepoService interface {
 	ListProjects() ([]models.ProjectInfo, error)
+	ListRecentProjects(limit int) ([]models.ProjectInfo, error)
 	ListProjectsSince(since time.Time, maxPages int) ([]models.ProjectInfo, error)
 	ListBranches(project string, limit int) ([]models.BranchInfo, error)
 	ListActiveBranches(project string, limit int) ([]models.BranchInfo, error)
