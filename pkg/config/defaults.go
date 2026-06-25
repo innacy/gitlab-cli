@@ -7,6 +7,7 @@ func setDefaults() {
 
 	viper.SetDefault("gitlab.base_url", "https://gitlab.example.com/")
 	viper.SetDefault("gitlab.api_version", "v4")
+	viper.SetDefault("gitlab.token_env", "GITLAB_TOKEN")
 	viper.SetDefault("gitlab.parent_folder", "")
 
 	viper.SetDefault("ai.provider", "anthropic")
@@ -33,13 +34,19 @@ func setDefaults() {
 
 	viper.SetDefault("other.directory", "./zzz-Mds")
 
+	viper.SetDefault("merge.squash", false)
+	viper.SetDefault("merge.remove_source_branch", true)
+
 	viper.SetDefault("cli.color_output", true)
 	viper.SetDefault("cli.markdown_rendering", true)
 	viper.SetDefault("cli.verbose", false)
 	viper.SetDefault("cli.confirm_before_post", true)
+	viper.SetDefault("cli.non_interactive", false)
+	viper.SetDefault("cli.auto_confirm", false)
 	viper.SetDefault("cli.idle_timeout_minutes", 60)
 	viper.SetDefault("cli.output_format", "text")
 	viper.SetDefault("cli.theme", "default")
+	viper.SetDefault("cli.open_in_browser", true)
 
 	viper.SetDefault("ticket_content.template", `# Ticket: <TITLE>
 

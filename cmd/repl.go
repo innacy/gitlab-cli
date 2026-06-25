@@ -73,7 +73,7 @@ func (r *replState) buildCompleter() *readline.PrefixCompleter {
 		readline.PcItem("tickets"),
 		readline.PcItem("ticket-open", projectDynamic),
 		readline.PcItem("ticket-open-empty"),
-		readline.PcItem("all-in-one"),
+		readline.PcItem("ship"),
 		readline.PcItem("ticket-close", projectDynamic),
 		readline.PcItem("ticket-reopen", projectDynamic),
 		readline.PcItem("ticket-update", projectDynamic),
@@ -97,6 +97,7 @@ func (r *replState) buildCompleter() *readline.PrefixCompleter {
 		readline.PcItem("pipeline-logs", projectDynamic),
 		readline.PcItem("pipeline-retry", projectDynamic),
 		readline.PcItem("pipeline-cancel", projectDynamic),
+		readline.PcItem("pipeline-triage", projectDynamic),
 		readline.PcItem("diff", projectDynamic),
 		readline.PcItem("branch-cleanup", projectDynamic),
 		readline.PcItem("create-ticket-content", projectDynamic),
@@ -239,6 +240,7 @@ func (r *replState) ensureFullCache() []models.ProjectInfo {
 	r.cacheMu.RUnlock()
 
 	if count <= startupProjectLimit {
+		r.lastRefreshTime = time.Time{}
 		r.refreshCacheWithLimit(0)
 	}
 
@@ -345,6 +347,8 @@ func RunREPL(cfg *config.AppConfig) {
 	defer rl.Close()
 	r.rl = rl
 
+	output.SetBrowserOpen(cfg.CLI.OpenInBrowser)
+
 	theme := output.GetTheme()
 	bold := color.New(color.Bold)
 
@@ -370,6 +374,7 @@ func RunREPL(cfg *config.AppConfig) {
 	fmt.Println("  pipeline-logs   <project> <job-id>     - Show job log output")
 	fmt.Println("  pipeline-retry  <project> <id>         - Retry a failed pipeline")
 	fmt.Println("  pipeline-cancel <project> <id>         - Cancel a running pipeline")
+	fmt.Println("  pipeline-triage <project> [id]         - AI triage of failed pipeline")
 	fmt.Println()
 	bold.Println("Tickets / Issues:")
 	fmt.Println("  ticket-open    [project]               - Create a new ticket")
@@ -394,7 +399,7 @@ func RunREPL(cfg *config.AppConfig) {
 	fmt.Println()
 	fmt.Println()
 	bold.Println("Workflow:")
-	fmt.Println("  all-in-one                             - Full flow: ticket → folder → commit → MR")
+	fmt.Println("  ship                                   - Full flow: ticket → multi-select folders → commit → MR → update ticket")
 	fmt.Println()
 	theme.Muted.Println("  start  - Start session  |  exit  - End session")
 	theme.Muted.Println("  Any other input is sent to AI as a question.")
@@ -497,6 +502,8 @@ func (r *replState) dispatch(line string) bool {
 		r.handlePipelineRetry(parts[1:])
 	case "pipeline-cancel":
 		r.handlePipelineCancel(parts[1:])
+	case "pipeline-triage":
+		r.handlePipelineTriage(parts[1:])
 	case "diff":
 		r.handleDiff(parts[1:])
 	case "branch-cleanup":
@@ -507,8 +514,8 @@ func (r *replState) dispatch(line string) bool {
 		r.handleTicketOpen(parts[1:])
 	case "ticket-open-empty":
 		r.handleTicketOpenEmpty(parts[1:])
-	case "all-in-one":
-		r.handleAllInOne(parts[1:])
+	case "ship":
+		r.handleShip(parts[1:])
 	case "ticket-close":
 		r.handleTicketClose(parts[1:])
 	case "ticket-reopen":
@@ -545,7 +552,7 @@ func (r *replState) dispatch(line string) bool {
 		output.PrintWarning("Command renamed → use 'mr-open' instead.")
 
 	default:
-		r.handleChat(line)
+		r.handleIntentOrChat(line)
 	}
 
 	return false

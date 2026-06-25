@@ -16,6 +16,7 @@ type AppConfig struct {
 	AI              AIConfig     `mapstructure:"ai" yaml:"ai"`
 	Review          ReviewConfig `mapstructure:"review" yaml:"review"`
 	Issues          IssuesConfig `mapstructure:"issues" yaml:"issues"`
+	Merge           MergeConfig           `mapstructure:"merge" yaml:"merge"`
 	CLI             CLIConfig             `mapstructure:"cli" yaml:"cli"`
 	Other           OtherOutputConfig     `mapstructure:"other" yaml:"other"`
 	TicketContent   ContentTemplateConfig `mapstructure:"ticket_content" yaml:"ticket_content"`
@@ -29,6 +30,8 @@ type AppConfig struct {
 type GitLabConfig struct {
 	BaseURL        string `mapstructure:"base_url" yaml:"base_url"`
 	APIVersion     string `mapstructure:"api_version" yaml:"api_version"`
+	Token          string `mapstructure:"token" yaml:"token"`
+	TokenEnv       string `mapstructure:"token_env" yaml:"token_env"`
 	DefaultProject string `mapstructure:"default_project" yaml:"default_project"`
 	ParentFolder   string `mapstructure:"parent_folder" yaml:"parent_folder"`
 }
@@ -114,15 +117,24 @@ type ContentTemplateConfig struct {
 	Template string `mapstructure:"template" yaml:"template"`
 }
 
+// MergeConfig holds default merge behavior settings.
+type MergeConfig struct {
+	Squash             bool `mapstructure:"squash" yaml:"squash"`
+	RemoveSourceBranch bool `mapstructure:"remove_source_branch" yaml:"remove_source_branch"`
+}
+
 // CLIConfig holds CLI behavior settings.
 type CLIConfig struct {
 	ColorOutput        bool   `mapstructure:"color_output" yaml:"color_output"`
 	MarkdownRendering  bool   `mapstructure:"markdown_rendering" yaml:"markdown_rendering"`
 	Verbose            bool   `mapstructure:"verbose" yaml:"verbose"`
 	ConfirmBeforePost  bool   `mapstructure:"confirm_before_post" yaml:"confirm_before_post"`
+	NonInteractive     bool   `mapstructure:"non_interactive" yaml:"non_interactive"`
+	AutoConfirm        bool   `mapstructure:"auto_confirm" yaml:"auto_confirm"`
 	IdleTimeoutMinutes int    `mapstructure:"idle_timeout_minutes" yaml:"idle_timeout_minutes"`
 	OutputFormat       string `mapstructure:"output_format" yaml:"output_format"`
 	Theme              string `mapstructure:"theme" yaml:"theme"`
+	OpenInBrowser      bool   `mapstructure:"open_in_browser" yaml:"open_in_browser"`
 }
 
 // Load reads configuration from YAML file and environment variables.
