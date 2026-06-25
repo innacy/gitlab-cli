@@ -172,7 +172,7 @@ func (r *replState) handleMRReview(args []string) {
 	r.stats.mrsReviewed++
 	r.stats.filesCreated++
 
-	if r.promptForYesNo("Do you want to add this review as a comment to the MR?") {
+	if r.promptForYesNoPost("Do you want to add this review as a comment to the MR?") {
 		r.postReviewComment(project, mrNumber)
 	}
 
@@ -272,7 +272,7 @@ func (r *replState) postReviewComment(project string, mrNumber int) {
 	}
 
 	output.PrintSuccess(fmt.Sprintf("Review posted to MR #%d", mrNumber))
-	output.PrintURL(noteURL)
+	output.PrintURLOpen(noteURL)
 	fmt.Println()
 }
 
@@ -442,17 +442,17 @@ func (r *replState) handleMROpen(args []string) {
 	}
 
 	if targetBranch == "" {
-		targetOptions := []string{"development", "master"}
-		choice := r.promptForChoice("Select target branch", targetOptions)
-		if choice < 0 {
-			return
-		}
-		targetBranch = targetOptions[choice]
+		targetBranch = r.detectTargetBranch(project, sourceBranch)
 	}
 
 	title := branchToMRTitle(sourceBranch)
 	if bInfo, err := r.provider.Repos().GetBranch(project, sourceBranch); err == nil && bInfo.CommitTitle != "" {
 		title = bInfo.CommitTitle
+	}
+
+	ticketNumber := extractTicketFromBranch(sourceBranch)
+	if ticketNumber > 0 {
+		output.PrintSuccess(fmt.Sprintf("Detected linked ticket: #%d (from branch name)", ticketNumber))
 	}
 
 	fmt.Println()
@@ -466,6 +466,10 @@ func (r *replState) handleMROpen(args []string) {
 	if err != nil {
 		output.PrintWarning(fmt.Sprintf("Could not generate description: %v", err))
 		description = fmt.Sprintf("Merge %s into %s", sourceBranch, targetBranch)
+	}
+
+	if ticketNumber > 0 {
+		description += fmt.Sprintf("\n\nCloses #%d", ticketNumber)
 	}
 
 	s = spinner.New(spinner.CharSets[14], 100*time.Millisecond)
@@ -483,7 +487,7 @@ func (r *replState) handleMROpen(args []string) {
 	fmt.Println()
 	output.PrintSuccess(fmt.Sprintf("MR #%d created: %s", mr.IID, mr.Title))
 	output.PrintSuccess(fmt.Sprintf("Branch: %s → %s", sourceBranch, targetBranch))
-	output.PrintURL(mr.WebURL)
+	output.PrintURLOpen(mr.WebURL)
 	fmt.Println()
 
 	r.stats.mrsCreated++
@@ -501,8 +505,15 @@ func (r *replState) handleMRMerge(args []string) {
 		return
 	}
 
-	squash := r.promptForYesNo("Squash commits?")
-	removeSource := r.promptForYesNo("Remove source branch after merge?")
+	squash := r.cfg.Merge.Squash
+	removeSource := r.cfg.Merge.RemoveSourceBranch
+
+	if !r.cfg.CLI.AutoConfirm {
+		squash = r.promptForYesNo(fmt.Sprintf("Squash commits? (default: %v)", squash))
+		removeSource = r.promptForYesNo(fmt.Sprintf("Remove source branch? (default: %v)", removeSource))
+	} else {
+		output.PrintSuccess(fmt.Sprintf("Using merge defaults: squash=%v, remove_source=%v", squash, removeSource))
+	}
 
 	s := newSpinner(fmt.Sprintf(" Merging MR #%d...", mrNumber))
 	s.Start()
@@ -597,9 +608,45 @@ func (r *replState) handleMRUpdate(args []string) {
 	if !r.ensureSession() {
 		return
 	}
-	project, mrNumber := r.parseMRArgs(args)
-	if project == "" || mrNumber <= 0 {
-		return
+
+	project, remaining := parseProjectFlag(args)
+
+	var mrNumberStr string
+	if project == "" {
+		for _, arg := range remaining {
+			if _, err := strconv.Atoi(arg); err == nil && mrNumberStr == "" {
+				mrNumberStr = arg
+			} else if project == "" {
+				project = arg
+			}
+		}
+	} else if len(remaining) > 0 {
+		mrNumberStr = remaining[0]
+	}
+
+	if project == "" {
+		project = r.promptForProject("Select project")
+		if project == "" {
+			output.PrintError("No project selected.")
+			return
+		}
+	}
+	project = r.resolveProject(project)
+
+	var mrNumber int
+	if mrNumberStr != "" {
+		n, err := strconv.Atoi(mrNumberStr)
+		if err != nil {
+			output.PrintError(fmt.Sprintf("Invalid MR number: %s", mrNumberStr))
+			return
+		}
+		mrNumber = n
+	} else {
+		mrNumber = r.pickMR(project, "Select MR to update")
+		if mrNumber <= 0 {
+			output.PrintError("No MR selected.")
+			return
+		}
 	}
 
 	fields := []string{"Title", "Description", "Labels", "Cancel"}
@@ -618,7 +665,43 @@ func (r *replState) handleMRUpdate(args []string) {
 		}
 		opts.Title = &title
 	case 1:
-		desc := r.promptForText("new-description")
+		mrInfo, err := r.provider.MRs().GetMergeRequest(project, mrNumber)
+		if err != nil {
+			output.PrintError(fmt.Sprintf("Failed to fetch MR details: %v", err))
+			return
+		}
+
+		if aiErr := r.ensureAI(); aiErr != nil {
+			output.PrintWarning(fmt.Sprintf("AI unavailable (%v), falling back to manual input.", aiErr))
+			desc := r.promptForText("new-description")
+			opts.Description = &desc
+			break
+		}
+
+		s := newSpinner(fmt.Sprintf(" Generating description via %s...", r.aiClient.ProviderName()))
+		s.Start()
+		desc, _, genErr := r.generateMRDescription(project, mrInfo.SourceBranch, mrInfo.TargetBranch)
+		s.Stop()
+
+		if genErr != nil {
+			output.PrintError(fmt.Sprintf("AI generation failed: %v", genErr))
+			output.PrintWarning("Falling back to manual input.")
+			desc = r.promptForText("new-description")
+		} else {
+			fmt.Println()
+			output.PrintSuccess("Generated description:")
+			fmt.Println()
+			fmt.Println(desc)
+			fmt.Println()
+
+			confirm := r.promptForChoice("Use this description?", []string{"Yes, update MR", "Edit manually", "Cancel"})
+			switch confirm {
+			case 1:
+				desc = r.promptForText("new-description")
+			case 2, -1:
+				return
+			}
+		}
 		opts.Description = &desc
 	case 2:
 		labelsStr := r.promptForText("labels (comma-separated)")
@@ -641,6 +724,7 @@ func (r *replState) handleMRUpdate(args []string) {
 		return
 	}
 	output.PrintSuccess(fmt.Sprintf("MR #%d updated: %s", mr.IID, mr.Title))
+	output.PrintURLOpen(mr.WebURL)
 	fmt.Println()
 }
 
@@ -734,4 +818,40 @@ func (r *replState) parseMRArgs(args []string) (string, int) {
 	}
 
 	return project, mrNumber
+}
+
+// pickMR fetches the latest open MRs for a project and lets the user choose
+// one from the list, with a manual-entry fallback.
+func (r *replState) pickMR(project, title string) int {
+	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
+	s.Suffix = " Fetching open MRs..."
+	s.Start()
+
+	openMRs, err := r.provider.MRs().ListProjectMRs(project, "opened", 5)
+	s.Stop()
+
+	if err != nil {
+		output.PrintError(fmt.Sprintf("Failed to fetch MRs: %v", err))
+		return 0
+	}
+
+	if len(openMRs) == 0 {
+		output.PrintWarning("No open MRs found.")
+		return r.promptForNumber("MR number")
+	}
+
+	options := make([]string, len(openMRs)+1)
+	for i, mr := range openMRs {
+		options[i] = fmt.Sprintf("!%d — %s (@%s, %s)", mr.IID, mr.Title, mr.Author, output.TimeAgo(mr.UpdatedAt))
+	}
+	options[len(openMRs)] = "Enter MR number manually..."
+
+	choice := r.promptForChoice(title, options)
+	if choice < 0 {
+		return 0
+	}
+	if choice == len(openMRs) {
+		return r.promptForNumber("MR number")
+	}
+	return openMRs[choice].IID
 }

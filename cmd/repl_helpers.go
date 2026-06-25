@@ -3,11 +3,14 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"gitlab-ai/internal/models"
+	"gitlab-ai/pkg/output"
 )
 
 // ─── Parsing & Resolving ─────────────────────────────────────────────────────
@@ -36,6 +39,68 @@ func sanitizeProject(name string) string {
 
 func reviewKey(project string, mrNumber int) string {
 	return fmt.Sprintf("%s-%d", sanitizeProject(project), mrNumber)
+}
+
+func (r *replState) getProjectDefaultBranch(project string) string {
+	cache := r.waitForCache()
+	lower := strings.ToLower(project)
+	for _, p := range cache {
+		if strings.ToLower(p.Path) == lower || strings.ToLower(p.Name) == lower {
+			if p.DefaultBranch != "" {
+				return p.DefaultBranch
+			}
+		}
+	}
+	return ""
+}
+
+func (r *replState) detectTargetBranch(project, sourceBranch string) string {
+	parentBranch := detectParentBranch(project, sourceBranch, r.provider.Repos().BranchExists)
+	if parentBranch != "" {
+		output.PrintSuccess(fmt.Sprintf("Auto-detected target branch: %s", parentBranch))
+		if !r.promptForYesNo(fmt.Sprintf("Use '%s' as target branch?", parentBranch)) {
+			return r.promptForText("target-branch")
+		}
+		return parentBranch
+	}
+
+	defaultBranch := r.getProjectDefaultBranch(project)
+	if defaultBranch != "" && defaultBranch != sourceBranch {
+		output.PrintSuccess(fmt.Sprintf("Using project default branch: %s", defaultBranch))
+		if !r.promptForYesNo(fmt.Sprintf("Use '%s' as target branch?", defaultBranch)) {
+			return r.promptForText("target-branch")
+		}
+		return defaultBranch
+	}
+
+	return r.promptForText("target-branch")
+}
+
+func detectParentBranch(project string, sourceBranch string, branchExists func(string, string) (bool, error)) string {
+	wellKnown := []string{"development", "master", "main"}
+
+	for _, candidate := range wellKnown {
+		if candidate == sourceBranch {
+			continue
+		}
+		exists, err := branchExists(project, candidate)
+		if err == nil && exists {
+			return candidate
+		}
+	}
+	return ""
+}
+
+func extractTicketFromBranch(branch string) int {
+	re := regexp.MustCompile(`(?:^|/)(\d+)(?:[_-]|$)`)
+	matches := re.FindStringSubmatch(branch)
+	if len(matches) >= 2 {
+		n, err := strconv.Atoi(matches[1])
+		if err == nil && n > 0 {
+			return n
+		}
+	}
+	return 0
 }
 
 func branchToMRTitle(branch string) string {

@@ -256,6 +256,10 @@ func (r *replState) promptForNumber(label string) int {
 }
 
 func (r *replState) promptForChoice(title string, options []string) int {
+	if len(options) == 1 && r.cfg.CLI.AutoConfirm {
+		output.PrintSuccess(fmt.Sprintf("Auto-selected: %s", options[0]))
+		return 0
+	}
 	return r.interactiveSelect(title, options)
 }
 
@@ -353,6 +357,26 @@ func (r *replState) promptForMultiSelect(title string, items []string, batchSize
 }
 
 func (r *replState) promptForYesNo(question string) bool {
+	if r.cfg.CLI.AutoConfirm {
+		output.PrintSuccess(fmt.Sprintf("Auto-confirmed: %s → Yes", question))
+		return true
+	}
+	choice := r.interactiveSelect(question, []string{"Yes", "No"})
+	return choice == 0
+}
+
+// promptForYesNoPost is for "post/publish" confirmations that respect confirm_before_post config.
+// When confirm_before_post is false, auto-confirms without prompting.
+func (r *replState) promptForYesNoPost(question string) bool {
+	if !r.cfg.CLI.ConfirmBeforePost {
+		output.PrintSuccess(fmt.Sprintf("Auto-posting (confirm_before_post=false): %s", question))
+		return true
+	}
+	return r.promptForYesNo(question)
+}
+
+// promptForYesNoSafe is for destructive operations that should never be auto-confirmed.
+func (r *replState) promptForYesNoSafe(question string) bool {
 	choice := r.interactiveSelect(question, []string{"Yes", "No"})
 	return choice == 0
 }

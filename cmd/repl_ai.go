@@ -167,6 +167,68 @@ func (r *replState) enhanceTicketDescription(userContext string) (string, string
 	return title, description, nil
 }
 
+func (r *replState) ticketFromBranchContext(project string) (string, string) {
+	sourceBranch, baseBranch := r.promptForBranchPair(project)
+	if sourceBranch == "" || baseBranch == "" {
+		return "", ""
+	}
+
+	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
+	s.Suffix = " Fetching branch diff for ticket context..."
+	s.Start()
+
+	commits, err := r.provider.MRs().GetBranchDiff(project, baseBranch, sourceBranch)
+	s.Stop()
+
+	if err != nil {
+		output.PrintWarning(fmt.Sprintf("Could not fetch commits: %v", err))
+		return "", ""
+	}
+
+	if len(commits) == 0 {
+		output.PrintWarning("No commits found between branches.")
+		return "", ""
+	}
+
+	branchContext := fmt.Sprintf("Branch: %s (based on %s)\n\nCommits:\n%s",
+		sourceBranch, baseBranch, strings.Join(commits, "\n"))
+
+	diff, diffErr := r.provider.MRs().GetBranchDiffFull(project, baseBranch, sourceBranch)
+	if diffErr == nil && diff != nil {
+		branchContext += fmt.Sprintf("\n\nFiles changed: %d (+%d -%d)", len(diff.Files), diff.TotalAdditions, diff.TotalDeletions)
+		for _, f := range diff.Files {
+			status := "modified"
+			if f.NewFile {
+				status = "added"
+			} else if f.Deleted {
+				status = "deleted"
+			}
+			branchContext += fmt.Sprintf("\n- %s (%s)", f.NewPath, status)
+		}
+	}
+
+	if err := r.ensureAI(); err != nil {
+		output.PrintWarning(fmt.Sprintf("AI not available: %v — using commits as context", err))
+		title := branchToMRTitle(sourceBranch)
+		return title, branchContext
+	}
+
+	s = spinner.New(spinner.CharSets[14], 100*time.Millisecond)
+	s.Suffix = " Generating ticket from branch context..."
+	s.Start()
+
+	title, description, aiErr := r.enhanceTicketDescription(branchContext)
+	s.Stop()
+
+	if aiErr != nil {
+		output.PrintWarning(fmt.Sprintf("AI generation failed: %v", aiErr))
+		return branchToMRTitle(sourceBranch), branchContext
+	}
+
+	output.PrintSuccess("AI-generated ticket from branch context ready")
+	return title, description
+}
+
 func (r *replState) askAI(prompt string) (string, error) {
 	ctx := context.Background()
 

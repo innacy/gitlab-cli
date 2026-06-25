@@ -144,7 +144,7 @@ func (r *replState) showHelp() {
 	})
 
 	printSection("Workflow", []helpCmd{
-		{"all-in-one", "Full flow: ticket → folder → commit → push → MR"},
+		{"ship", "Full flow: ticket → multi-select folders → commit → push → MR → update ticket"},
 	})
 
 	printSection("Session", []helpCmd{

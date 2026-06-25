@@ -2,6 +2,7 @@ package gitlab
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -40,8 +41,27 @@ func Authenticate(cfg *config.GitLabConfig) (*gogitlab.Client, error) {
 	return client, nil
 }
 
-// getToken retrieves the GitLab API token from ~/.netrc.
+// getToken retrieves the GitLab API token using the following priority:
+//  1. GITLAB_TOKEN (or custom env var from gitlab.token_env)
+//  2. gitlab.token in config.yaml
+//  3. ~/.netrc entry for the configured host
 func getToken(cfg *config.GitLabConfig) string {
+	if envName := cfg.TokenEnv; envName != "" {
+		if token := os.Getenv(envName); token != "" {
+			utils.Debugf("Using GitLab token from env: %s", envName)
+			return token
+		}
+	}
+	if token := os.Getenv("GITLAB_TOKEN"); token != "" {
+		utils.Debugf("Using GitLab token from env: GITLAB_TOKEN")
+		return token
+	}
+
+	if cfg.Token != "" {
+		utils.Debugf("Using GitLab token from config file")
+		return cfg.Token
+	}
+
 	entry, err := utils.FindNetrcEntry(cfg.BaseURL)
 	if err != nil {
 		utils.Debugf("Failed to read .netrc for %s: %v", cfg.BaseURL, err)

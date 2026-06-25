@@ -245,7 +245,7 @@ func (r *replState) handlePipelineRetry(args []string) {
 
 	output.PrintSuccess(fmt.Sprintf("Pipeline #%d retried — status: %s", pl.ID, pl.Status))
 	if pl.WebURL != "" {
-		output.PrintURL(pl.WebURL)
+		output.PrintURLOpen(pl.WebURL)
 	}
 	fmt.Println()
 }

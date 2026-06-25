@@ -79,7 +79,7 @@ func (r *replState) handleBranchCleanup(args []string) {
 	output.PrintBranchesTable(merged, fmt.Sprintf("Stale/Merged Branches — %s", project))
 	fmt.Println()
 
-	if !r.promptForYesNo(fmt.Sprintf("Delete all %d branches listed above?", len(merged))) {
+	if !r.promptForYesNoSafe(fmt.Sprintf("Delete all %d branches listed above?", len(merged))) {
 		output.PrintWarning("Branch cleanup cancelled.")
 		fmt.Println()
 		return
@@ -211,30 +211,43 @@ func (r *replState) handleTicketOpen(args []string) {
 	project = r.resolveProject(project)
 
 	fmt.Println()
-	output.PrintSuccess("Summarize ticket context in one clear sentence/paragraph.")
-	context := r.promptForText("ticket-context")
-	if context == "" {
-		output.PrintError("Ticket context cannot be empty.")
-		return
-	}
+	contextMode := r.promptForChoice("How would you like to provide ticket context?", []string{
+		"Type a summary manually",
+		"Auto-generate from branch commits & diff",
+	})
 
 	var title, description string
-	if err := r.ensureAI(); err == nil {
-		s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-		s.Suffix = " Enhancing ticket description with AI..."
-		s.Start()
-		aiTitle, aiDesc, aiErr := r.enhanceTicketDescription(context)
-		s.Stop()
-		if aiErr != nil {
-			output.PrintWarning(fmt.Sprintf("AI enhancement failed, using basic template: %v", aiErr))
-			title, description = buildTicketContent(context)
-		} else {
-			title, description = aiTitle, aiDesc
-			output.PrintSuccess("AI-enhanced ticket description ready")
+	switch contextMode {
+	case 1:
+		title, description = r.ticketFromBranchContext(project)
+		if title == "" {
+			return
 		}
-	} else {
-		output.PrintWarning("AI not available, using basic template")
-		title, description = buildTicketContent(context)
+	default:
+		output.PrintSuccess("Summarize ticket context in one clear sentence/paragraph.")
+		ticketCtx := r.promptForText("ticket-context")
+		if ticketCtx == "" {
+			output.PrintError("Ticket context cannot be empty.")
+			return
+		}
+
+		if err := r.ensureAI(); err == nil {
+			s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
+			s.Suffix = " Enhancing ticket description with AI..."
+			s.Start()
+			aiTitle, aiDesc, aiErr := r.enhanceTicketDescription(ticketCtx)
+			s.Stop()
+			if aiErr != nil {
+				output.PrintWarning(fmt.Sprintf("AI enhancement failed, using basic template: %v", aiErr))
+				title, description = buildTicketContent(ticketCtx)
+			} else {
+				title, description = aiTitle, aiDesc
+				output.PrintSuccess("AI-enhanced ticket description ready")
+			}
+		} else {
+			output.PrintWarning("AI not available, using basic template")
+			title, description = buildTicketContent(ticketCtx)
+		}
 	}
 
 	labels, err := r.provider.Issues().ListProjectLabels(project)
@@ -279,7 +292,7 @@ func (r *replState) handleTicketOpen(args []string) {
 	} else {
 		output.PrintSuccess(fmt.Sprintf("Label: %s", strings.Join(createLabels, ", ")))
 	}
-	output.PrintURL(issue.WebURL)
+	output.PrintURLOpen(issue.WebURL)
 	fmt.Println()
 
 	r.refreshCacheAsync()
@@ -731,7 +744,7 @@ func (r *replState) releaseCreateMRs(pending []models.ProjectReleaseInfo) {
 		}
 
 		output.PrintSuccess(fmt.Sprintf("%s: MR !%d created", p.Name, mr.IID))
-		output.PrintURL(mr.WebURL)
+		output.PrintURLOpen(mr.WebURL)
 		r.stats.mrsCreated++
 	}
 	fmt.Println()

@@ -142,7 +142,6 @@ func TestEnsureFullCache_FetchesAllAfterLimitedStartup(t *testing.T) {
 		t.Fatalf("precondition failed: cache should have %d, got %d", startupProjectLimit, countBefore)
 	}
 
-	r.lastRefreshTime = time.Time{}
 	projects := r.ensureFullCache()
 
 	if repos.listProjectsCalls != 1 {

@@ -38,7 +38,7 @@ func (r *replState) handleTicketOpenEmpty(args []string) {
 
 	output.PrintSuccess(fmt.Sprintf("Ticket #%d created: %s", issue.IID, issue.Title))
 	output.PrintSuccess(fmt.Sprintf("Assignee: @%s", r.provider.Username()))
-	output.PrintURL(issue.WebURL)
+	output.PrintURLOpen(issue.WebURL)
 	fmt.Println()
 	r.refreshCacheAsync()
 }
@@ -80,67 +80,54 @@ func (r *replState) getConfiguredProject() string {
 	return ""
 }
 
-// ─── All-in-One ──────────────────────────────────────────────────────────────
+// ─── Ship ────────────────────────────────────────────────────────────────────
 
-func (r *replState) handleAllInOne(args []string) {
+func (r *replState) handleShip(args []string) {
 	if !r.ensureSession() {
 		return
 	}
 
-	ticketIID, ticketURL, ticketProject := r.allInOneGetTicket()
+	ticketIID, ticketURL, ticketProject := r.shipGetTicket()
 	if ticketIID <= 0 {
 		return
 	}
 
 	output.PrintSuccess(fmt.Sprintf("Working with ticket #%d", ticketIID))
-	output.PrintURL(ticketURL)
+	output.PrintURLOpen(ticketURL)
 	fmt.Println()
 
-	processedFolders := make(map[string]bool)
+	folders := r.shipSelectFolders()
+	if len(folders) == 0 {
+		output.PrintWarning("No folders selected.")
+		return
+	}
 
-	for {
-		folder := r.allInOneSelectFolder(processedFolders)
-		if folder == "" {
-			return
-		}
+	output.PrintSuccess(fmt.Sprintf("Processing %d folder(s)...", len(folders)))
+	fmt.Println()
 
-		mrURL, ok := r.allInOneProcessFolder(folder, ticketIID, ticketURL)
-		if !ok {
-			choice := r.promptForChoice("What would you like to do?", []string{
-				"Select another folder",
-				"Exit",
-			})
-			if choice == 0 {
-				continue
-			}
-			return
-		}
-
-		processedFolders[folder] = true
-		_ = mrURL
-
-		choice := r.promptForChoice("What would you like to do next?", []string{
-			"Continue with another folder",
-			"Final update on ticket description",
-			"Exit",
-		})
-
-		switch choice {
-		case 0:
-			continue
-		case 1:
-			r.allInOneUpdateTicketDesc(ticketProject, ticketIID)
-			return
-		default:
-			return
+	var successCount int
+	for _, folder := range folders {
+		_, ok := r.shipProcessFolder(folder, ticketIID, ticketURL)
+		if ok {
+			successCount++
 		}
 	}
+
+	if successCount == 0 {
+		output.PrintWarning("No folders were processed successfully.")
+		return
+	}
+
+	output.PrintSuccess(fmt.Sprintf("Shipped %d/%d folder(s). Updating ticket...", successCount, len(folders)))
+	fmt.Println()
+
+	r.shipUpdateTicketDesc(ticketProject, ticketIID)
 }
 
-func (r *replState) allInOneGetTicket() (iid int, webURL string, project string) {
-	choice := r.promptForChoice("Ticket setup", []string{
-		"Create new empty ticket",
-		"Select existing ticket",
+func (r *replState) shipGetTicket() (iid int, webURL string, project string) {
+	choice := r.promptForChoice("Ticket", []string{
+		"Create new ticket",
+		"Use existing ticket",
 	})
 
 	project = r.getConfiguredProject()
@@ -159,7 +146,7 @@ func (r *replState) allInOneGetTicket() (iid int, webURL string, project string)
 		}
 		output.PrintSuccess(fmt.Sprintf("Ticket #%d created: %s", issue.IID, issue.Title))
 		output.PrintSuccess(fmt.Sprintf("Assignee: @%s", r.provider.Username()))
-		output.PrintURL(issue.WebURL)
+		output.PrintURLOpen(issue.WebURL)
 		fmt.Println()
 		return issue.IID, issue.WebURL, project
 
@@ -177,11 +164,11 @@ func (r *replState) allInOneGetTicket() (iid int, webURL string, project string)
 	}
 }
 
-func (r *replState) allInOneSelectFolder(processed map[string]bool) string {
+func (r *replState) shipSelectFolders() []string {
 	parentFolder := strings.TrimSpace(r.cfg.GitLab.ParentFolder)
 	if parentFolder == "" {
 		output.PrintError("Parent folder not configured. Set 'gitlab.parent_folder' in config.")
-		return ""
+		return nil
 	}
 
 	if strings.HasPrefix(parentFolder, "~/") {
@@ -192,7 +179,7 @@ func (r *replState) allInOneSelectFolder(processed map[string]bool) string {
 	entries, err := os.ReadDir(parentFolder)
 	if err != nil {
 		output.PrintError(fmt.Sprintf("Failed to read parent folder '%s': %v", parentFolder, err))
-		return ""
+		return nil
 	}
 
 	type folderEntry struct {
@@ -210,9 +197,6 @@ func (r *replState) allInOneSelectFolder(processed map[string]bool) string {
 			continue
 		}
 		fullPath := filepath.Join(parentFolder, entry.Name())
-		if processed[fullPath] {
-			continue
-		}
 		if !hasGitChanges(fullPath) {
 			continue
 		}
@@ -232,44 +216,31 @@ func (r *replState) allInOneSelectFolder(processed map[string]bool) string {
 		return folders[i].modTime.After(folders[j].modTime)
 	})
 
-	limit := 5
-	if len(folders) < limit {
-		limit = len(folders)
-	}
-
-	if limit == 0 {
+	if len(folders) == 0 {
 		output.PrintWarning("No folders with local changes found.")
-		return ""
+		return nil
 	}
 
-	options := make([]string, limit+1)
-	for i := 0; i < limit; i++ {
-		options[i] = fmt.Sprintf("%s (%s)", folders[i].name, output.TimeAgo(folders[i].modTime))
-	}
-	options[limit] = "Enter folder name manually..."
+	output.PrintSuccess(fmt.Sprintf("Found %d folder(s) with local changes", len(folders)))
 
-	choice := r.promptForChoice("Select folder", options)
-	if choice < 0 {
-		return ""
+	options := make([]string, len(folders))
+	for i, f := range folders {
+		options[i] = fmt.Sprintf("%s (%s)", f.name, output.TimeAgo(f.modTime))
 	}
 
-	if choice < limit {
-		return folders[choice].path
+	selected := r.promptForMultiSelect("Select folders to ship", options, 10)
+	if len(selected) == 0 {
+		return nil
 	}
 
-	name := r.promptForText("folder-name")
-	if name == "" {
-		return ""
+	result := make([]string, len(selected))
+	for i, idx := range selected {
+		result[i] = folders[idx].path
 	}
-	fullPath := filepath.Join(parentFolder, name)
-	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-		output.PrintError(fmt.Sprintf("Folder '%s' does not exist.", fullPath))
-		return ""
-	}
-	return fullPath
+	return result
 }
 
-func (r *replState) allInOneProcessFolder(folder string, ticketIID int, ticketURL string) (mrURL string, ok bool) {
+func (r *replState) shipProcessFolder(folder string, ticketIID int, ticketURL string) (mrURL string, ok bool) {
 	folderName := filepath.Base(folder)
 	fmt.Println()
 	output.PrintSuccess(fmt.Sprintf("Processing: %s", folderName))
@@ -397,7 +368,7 @@ func (r *replState) allInOneProcessFolder(folder string, ticketIID int, ticketUR
 	fmt.Println()
 	output.PrintSuccess(fmt.Sprintf("MR !%d created: %s", mr.IID, mr.Title))
 	output.PrintSuccess(fmt.Sprintf("Branch: %s → %s", branchName, targetBranch))
-	output.PrintURL(mr.WebURL)
+	output.PrintURLOpen(mr.WebURL)
 	fmt.Println()
 	r.stats.mrsCreated++
 
@@ -469,7 +440,7 @@ Diff:
 	return fmt.Sprintf("fix(%s): Update %d files in %s", ticketURL, fileCount, filepath.Base(folder))
 }
 
-func (r *replState) allInOneUpdateTicketDesc(project string, ticketIID int) {
+func (r *replState) shipUpdateTicketDesc(project string, ticketIID int) {
 	s := newSpinner(fmt.Sprintf(" Fetching MRs linked to #%d...", ticketIID))
 	s.Start()
 	linkedMRs, err := r.provider.Issues().ListRelatedMergeRequests(project, ticketIID)
@@ -573,7 +544,7 @@ func (r *replState) allInOneUpdateTicketDesc(project string, ticketIID int) {
 	}
 
 	output.PrintSuccess(fmt.Sprintf("Ticket #%d updated: %s", updated.IID, updated.Title))
-	output.PrintURL(updated.WebURL)
+	output.PrintURLOpen(updated.WebURL)
 	fmt.Println()
 }
 

@@ -122,7 +122,7 @@ func (r *replState) createNewTicket(project, title, description string) {
 	}
 
 	output.PrintSuccess(fmt.Sprintf("Ticket #%d created: %s", issue.IID, issue.Title))
-	output.PrintURL(issue.WebURL)
+	output.PrintURLOpen(issue.WebURL)
 	fmt.Println()
 	r.refreshCacheAsync()
 }
@@ -148,7 +148,7 @@ func (r *replState) updateExistingTicket(project, description string) {
 	}
 
 	output.PrintSuccess(fmt.Sprintf("Ticket #%d updated: %s", updated.IID, updated.Title))
-	output.PrintURL(updated.WebURL)
+	output.PrintURLOpen(updated.WebURL)
 	fmt.Println()
 }
 
@@ -312,7 +312,7 @@ func (r *replState) handleTicketDescribe(args []string) {
 	fmt.Println()
 
 	// Step 7: Update the ticket (title + description)
-	if !r.promptForYesNo(fmt.Sprintf("Update ticket #%d with this content?", issueIID)) {
+	if !r.promptForYesNoPost(fmt.Sprintf("Update ticket #%d with this content?", issueIID)) {
 		return
 	}
 
@@ -331,7 +331,7 @@ func (r *replState) handleTicketDescribe(args []string) {
 	}
 
 	output.PrintSuccess(fmt.Sprintf("Ticket #%d updated: %s", updated.IID, updated.Title))
-	output.PrintURL(updated.WebURL)
+	output.PrintURLOpen(updated.WebURL)
 	fmt.Println()
 }
 
@@ -443,7 +443,7 @@ func (r *replState) handleCreateEpicContent(args []string) {
 	r.stats.filesCreated++
 	fmt.Println()
 
-	if r.promptForYesNo("Do you want to create an epic with this content?") {
+	if r.promptForYesNoPost("Do you want to create an epic with this content?") {
 		groupPath := r.activeTeam
 		if groupPath == "" {
 			output.PrintError("No active team set. Cannot create group epic.")
@@ -462,7 +462,7 @@ func (r *replState) handleCreateEpicContent(args []string) {
 		}
 
 		output.PrintSuccess(fmt.Sprintf("Epic #%d created: %s", epic.IID, epic.Title))
-		output.PrintURL(epic.WebURL)
+		output.PrintURLOpen(epic.WebURL)
 		fmt.Println()
 	}
 }
