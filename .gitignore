@@ -39,6 +39,9 @@ Thumbs.db
 config.yaml
 !configs/default.yaml
 
+# Audit trail storage
+.git-agent/
+
 # Claude flow and context
 .claude-flow/*
 .claude/*
