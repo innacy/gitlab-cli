@@ -135,12 +135,23 @@ func (r *replState) handleStatsDashboard() {
 
 	srv := audit.NewServer(r.auditor)
 
-	fmt.Println()
-	output.PrintSuccess("Starting dashboard server...")
-
-	if err := srv.ListenAndServe(func(url string) {
+	addr, shutdown, err := srv.Start(func(url string) {
 		output.PrintURLOpen(url)
-	}); err != nil {
+	})
+	if err != nil {
 		output.PrintError(fmt.Sprintf("Dashboard server error: %v", err))
+		return
 	}
+
+	fmt.Println()
+	output.PrintSuccess(fmt.Sprintf("Dashboard running at %s", addr))
+	fmt.Println()
+	output.GetTheme().Muted.Println("  Press Enter to stop the dashboard and return to the REPL.")
+	fmt.Println()
+
+	r.rl.Readline()
+	r.resetIdle()
+	shutdown()
+	output.PrintSuccess("Dashboard stopped.")
+	fmt.Println()
 }

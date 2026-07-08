@@ -35,19 +35,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
 }
 
-func (s *Server) ListenAndServe(openBrowser func(string)) error {
+func (s *Server) Start(openBrowser func(string)) (addr string, shutdown func(), err error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		return fmt.Errorf("listen: %w", err)
+		return "", nil, fmt.Errorf("listen: %w", err)
 	}
 
-	addr := fmt.Sprintf("http://%s", listener.Addr().String())
-	fmt.Printf("  Dashboard running at %s\n", addr)
-	fmt.Println("  Press Ctrl+C to stop")
-
-	if openBrowser != nil {
-		openBrowser(addr)
-	}
+	addr = fmt.Sprintf("http://%s", listener.Addr().String())
 
 	srv := &http.Server{
 		Handler:      s.mux,
@@ -56,12 +50,18 @@ func (s *Server) ListenAndServe(openBrowser func(string)) error {
 		IdleTimeout:  30 * time.Minute,
 	}
 
+	go srv.Serve(listener)
+
 	go func() {
 		<-time.After(30 * time.Minute)
 		srv.Shutdown(context.Background())
 	}()
 
-	return srv.Serve(listener)
+	if openBrowser != nil {
+		openBrowser(addr)
+	}
+
+	return addr, func() { srv.Shutdown(context.Background()) }, nil
 }
 
 func (s *Server) parseDateRange(r *http.Request) (string, string) {
