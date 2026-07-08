@@ -68,7 +68,7 @@ func (r *replState) ensureAI() error {
 
 // ─── AI Operations ───────────────────────────────────────────────────────────
 
-func (r *replState) reviewWithAI(mr *models.MergeRequestInfo, projectContext string) (string, error) {
+func (r *replState) reviewWithAI(mr *models.MergeRequestInfo, projectContext string) (ai.ChatResult, error) {
 	ctx := context.Background()
 
 	systemPrompt := ai.BuildSystemPrompt()
@@ -80,11 +80,7 @@ func (r *replState) reviewWithAI(mr *models.MergeRequestInfo, projectContext str
 
 	userPrompt := ai.BuildReviewPrompt(mr, r.cfg.Review.Template.Sections)
 
-	result, err := r.aiClient.Chat(ctx, systemPrompt, userPrompt)
-	if err != nil {
-		return "", err
-	}
-	return result.Text, nil
+	return r.aiClient.Chat(ctx, systemPrompt, userPrompt)
 }
 
 func (r *replState) generateMRDescription(projectPath, sourceBranch, targetBranch string) (description string, commits []string, err error) {

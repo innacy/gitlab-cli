@@ -11,6 +11,7 @@ import (
 
 	"gitlab-ai/internal/models"
 	projectctx "gitlab-ai/pkg/context"
+	"gitlab-ai/pkg/audit"
 	"gitlab-ai/pkg/output"
 	"gitlab-ai/pkg/platform"
 )
@@ -119,13 +120,15 @@ func (r *replState) handleMRReview(args []string) {
 	s.Suffix = suffix + "..."
 	s.Start()
 
-	reviewText, err := r.reviewWithAI(mrInfo, projContext)
+	reviewResult, err := r.reviewWithAI(mrInfo, projContext)
 	s.Stop()
 
 	if err != nil {
 		output.PrintError(fmt.Sprintf("AI review failed: %v", err))
 		return
 	}
+
+	reviewText := reviewResult.Text
 
 	output.PrintSuccess("AI review generated")
 
@@ -171,6 +174,18 @@ func (r *replState) handleMRReview(args []string) {
 	r.storeReview(project, mrNumber, mrInfo.Title, filename, output.GenerateGitLabComment(review))
 	r.stats.mrsReviewed++
 	r.stats.filesCreated++
+
+	if r.auditor != nil {
+		evtID, _ := r.auditor.Record(audit.Event{
+			Command:  "mr-review",
+			Category: audit.CategoryAIGeneration,
+			Project:  project,
+			Success:  true,
+			Metadata: map[string]interface{}{"mr": mrNumber},
+		})
+		r.auditAI(evtID, reviewResult)
+		r.lastAIEventID = evtID
+	}
 
 	if r.promptForYesNoPost("Do you want to add this review as a comment to the MR?") {
 		r.postReviewComment(project, mrNumber)
@@ -273,6 +288,7 @@ func (r *replState) postReviewComment(project string, mrNumber int) {
 
 	output.PrintSuccess(fmt.Sprintf("Review posted to MR #%d", mrNumber))
 	output.PrintURLOpen(noteURL)
+	r.auditOutcome(r.lastAIEventID, audit.OutcomeAccepted, nil)
 	fmt.Println()
 }
 
