@@ -71,10 +71,11 @@ func (r *replState) classifyIntent(input string) *intentResult {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	response, err := r.aiClient.Chat(ctx, intentSystemPrompt, input)
+	chatResult, err := r.aiClient.Chat(ctx, intentSystemPrompt, input)
 	if err != nil {
 		return nil
 	}
+	response := chatResult.Text
 
 	response = strings.TrimSpace(response)
 	response = strings.TrimPrefix(response, "```json")

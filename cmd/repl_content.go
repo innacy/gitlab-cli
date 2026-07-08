@@ -62,13 +62,15 @@ func (r *replState) handleCreateTicketContent(args []string) {
 	prompt := ai.BuildTicketContentPrompt(diff, template, fileContents)
 	systemPrompt := "You are a technical writer that creates precise, actionable GitLab tickets from code diffs. Derive ALL content strictly from the provided diff and file context — do NOT assume, invent, or hallucinate any project context, business logic, or details not present in the diff. Follow the template structure exactly. Be concise — no filler, no extra detail."
 
-	response, err := r.aiClient.Chat(context.Background(), systemPrompt, prompt)
+	chatResult, err := r.aiClient.Chat(context.Background(), systemPrompt, prompt)
 	s.Stop()
 
 	if err != nil {
 		output.PrintError(fmt.Sprintf("AI generation failed: %v", err))
 		return
 	}
+
+	response := chatResult.Text
 
 	title, description := parseContentResponse(response)
 
@@ -299,7 +301,7 @@ func (r *replState) handleTicketDescribe(args []string) {
 	prompt := ai.BuildMultiMRTicketContentPrompt(entries, template)
 	systemPrompt := "You are a technical writer that creates precise, actionable GitLab tickets from code diffs. Derive ALL content strictly from the provided diffs — do NOT assume, invent, or hallucinate any project context, business logic, or details not present in the diffs. The ticket MUST include a per-repository breakdown. Follow the template structure exactly. Be concise — no filler, no extra detail."
 
-	response, err := r.aiClient.Chat(context.Background(), systemPrompt, prompt)
+	chatResult, err := r.aiClient.Chat(context.Background(), systemPrompt, prompt)
 	s.Stop()
 
 	if err != nil {
@@ -307,14 +309,11 @@ func (r *replState) handleTicketDescribe(args []string) {
 		return
 	}
 
+	response := chatResult.Text
+
 	title, description := parseContentResponse(response)
 
 	fmt.Println()
-
-	// Step 7: Update the ticket (title + description)
-	if !r.promptForYesNoPost(fmt.Sprintf("Update ticket #%d with this content?", issueIID)) {
-		return
-	}
 
 	s = spinner.New(spinner.CharSets[14], 100*time.Millisecond)
 	s.Suffix = fmt.Sprintf(" Updating ticket #%d...", issueIID)
@@ -417,13 +416,15 @@ func (r *replState) handleCreateEpicContent(args []string) {
 	prompt := ai.BuildEpicContentPrompt(diff, template)
 	systemPrompt := "You are a technical writer that creates detailed, comprehensive GitLab epics from code diffs. Derive ALL content strictly from the provided diff — do NOT assume, invent, or hallucinate any project context, business logic, or details not present in the diff. Follow the template structure exactly. Be thorough — include technical details and impact analysis."
 
-	response, err := r.aiClient.Chat(context.Background(), systemPrompt, prompt)
+	chatResult, err := r.aiClient.Chat(context.Background(), systemPrompt, prompt)
 	s.Stop()
 
 	if err != nil {
 		output.PrintError(fmt.Sprintf("AI generation failed: %v", err))
 		return
 	}
+
+	response := chatResult.Text
 
 	title, description := parseContentResponse(response)
 

@@ -96,6 +96,14 @@ func (r *replState) handleShip(args []string) {
 	output.PrintURLOpen(ticketURL)
 	fmt.Println()
 
+	if _, err := r.provider.Issues().UpdateIssue(ticketProject, ticketIID, platform.UpdateIssueOptions{
+		AddLabels: []string{"In Progress"},
+	}); err != nil {
+		output.PrintWarning(fmt.Sprintf("Could not set 'In Progress' label: %v", err))
+	} else {
+		output.PrintSuccess("Status → In Progress")
+	}
+
 	folders := r.shipSelectFolders()
 	if len(folders) == 0 {
 		output.PrintWarning("No folders selected.")
@@ -121,6 +129,7 @@ func (r *replState) handleShip(args []string) {
 	output.PrintSuccess(fmt.Sprintf("Shipped %d/%d folder(s). Updating ticket...", successCount, len(folders)))
 	fmt.Println()
 
+	time.Sleep(3 * time.Second) // Wait a moment for GitLab to register the MRs
 	r.shipUpdateTicketDesc(ticketProject, ticketIID)
 }
 
@@ -413,11 +422,11 @@ Diff:
 %s`, diffStat, diffOut)
 
 		ctx := context.Background()
-		response, err := r.aiClient.Chat(ctx,
+		chatResult, err := r.aiClient.Chat(ctx,
 			"You write imperative-mood git commit subjects. Output only the subject line, nothing else.",
 			prompt)
 		if err == nil {
-			summary := strings.TrimSpace(response)
+			summary := strings.TrimSpace(chatResult.Text)
 			summary = strings.Trim(summary, "`\"'")
 			summary = strings.TrimSuffix(summary, ".")
 			for _, prefix := range []string{"fix:", "feat:", "chore:", "refactor:", "Fix:", "Feat:"} {
@@ -441,17 +450,32 @@ Diff:
 }
 
 func (r *replState) shipUpdateTicketDesc(project string, ticketIID int) {
-	s := newSpinner(fmt.Sprintf(" Fetching MRs linked to #%d...", ticketIID))
+	const maxRetries = 5
+	const retryDelay = 3 * time.Second
+
+	s := newSpinner(fmt.Sprintf(" Waiting for GitLab to link MRs to #%d...", ticketIID))
 	s.Start()
-	linkedMRs, err := r.provider.Issues().ListRelatedMergeRequests(project, ticketIID)
+
+	var linkedMRs []models.MRListItem
+	var err error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			time.Sleep(retryDelay)
+		}
+		linkedMRs, err = r.provider.Issues().ListRelatedMergeRequests(project, ticketIID)
+		if err != nil {
+			s.Stop()
+			output.PrintError(fmt.Sprintf("Failed to fetch linked MRs: %v", err))
+			return
+		}
+		if len(linkedMRs) > 0 {
+			break
+		}
+	}
 	s.Stop()
 
-	if err != nil {
-		output.PrintError(fmt.Sprintf("Failed to fetch linked MRs: %v", err))
-		return
-	}
 	if len(linkedMRs) == 0 {
-		output.PrintWarning(fmt.Sprintf("No merge requests linked to ticket #%d.", ticketIID))
+		output.PrintWarning(fmt.Sprintf("No merge requests linked to ticket #%d after %d attempts.", ticketIID, maxRetries))
 		output.PrintWarning("Tip: MR descriptions should contain 'Relates to <ticket-url>' to auto-link.")
 		return
 	}
@@ -520,7 +544,7 @@ func (r *replState) shipUpdateTicketDesc(project string, ticketIID int) {
 	prompt := ai.BuildMultiMRTicketContentPrompt(entries, template)
 	systemPrompt := "You are a technical writer that creates precise, actionable GitLab tickets from code diffs. Derive ALL content strictly from the provided diffs — do NOT assume, invent, or hallucinate any project context, business logic, or details not present in the diffs. The ticket MUST include a per-repository breakdown. Follow the template structure exactly. Be concise — no filler, no extra detail."
 
-	response, err := r.aiClient.Chat(context.Background(), systemPrompt, prompt)
+	chatResult, err := r.aiClient.Chat(context.Background(), systemPrompt, prompt)
 	s.Stop()
 
 	if err != nil {
@@ -528,13 +552,17 @@ func (r *replState) shipUpdateTicketDesc(project string, ticketIID int) {
 		return
 	}
 
+	response := chatResult.Text
+
 	title, description := parseContentResponse(response)
 
 	s = newSpinner(fmt.Sprintf(" Updating ticket #%d...", ticketIID))
 	s.Start()
 	updated, err := r.provider.Issues().UpdateIssue(project, ticketIID, platform.UpdateIssueOptions{
-		Title:       &title,
-		Description: &description,
+		Title:        &title,
+		Description:  &description,
+		AddLabels:    []string{"Waiting for MR"},
+		RemoveLabels: []string{"In Progress"},
 	})
 	s.Stop()
 
@@ -544,6 +572,7 @@ func (r *replState) shipUpdateTicketDesc(project string, ticketIID int) {
 	}
 
 	output.PrintSuccess(fmt.Sprintf("Ticket #%d updated: %s", updated.IID, updated.Title))
+	output.PrintSuccess("Status → Waiting for MR")
 	output.PrintURLOpen(updated.WebURL)
 	fmt.Println()
 }

@@ -140,7 +140,7 @@ func (r *replState) handlePipelineTriage(args []string) {
 
 		prompt := ai.BuildPipelineFailurePrompt(job.name, log)
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		analysis, aiErr := r.aiClient.Chat(ctx, ai.BuildSystemPrompt(), prompt)
+	chatResult, aiErr := r.aiClient.Chat(ctx, ai.BuildSystemPrompt(), prompt)
 		cancel()
 		s.Stop()
 
@@ -148,6 +148,8 @@ func (r *replState) handlePipelineTriage(args []string) {
 			output.PrintWarning(fmt.Sprintf("AI analysis failed for '%s': %v", job.name, aiErr))
 			continue
 		}
+
+		analysis := chatResult.Text
 
 		triageResults = append(triageResults, fmt.Sprintf("### Job: %s (ID: %d)\n\n%s", job.name, job.id, analysis))
 	}

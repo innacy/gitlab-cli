@@ -80,7 +80,11 @@ func (r *replState) reviewWithAI(mr *models.MergeRequestInfo, projectContext str
 
 	userPrompt := ai.BuildReviewPrompt(mr, r.cfg.Review.Template.Sections)
 
-	return r.aiClient.Chat(ctx, systemPrompt, userPrompt)
+	result, err := r.aiClient.Chat(ctx, systemPrompt, userPrompt)
+	if err != nil {
+		return "", err
+	}
+	return result.Text, nil
 }
 
 func (r *replState) generateMRDescription(projectPath, sourceBranch, targetBranch string) (description string, commits []string, err error) {
@@ -103,8 +107,8 @@ func (r *replState) generateMRDescription(projectPath, sourceBranch, targetBranc
 	// Tier 1: Direct AI with full-diff prompt
 	if aiErr := r.ensureAI(); aiErr == nil {
 		prompt := ai.BuildMRDescriptionPromptFull(sourceBranch, targetBranch, diff)
-		if desc, chatErr := r.aiClient.Chat(ctx, systemPrompt, prompt); chatErr == nil {
-			return desc, diff.Commits, nil
+		if chatResult, chatErr := r.aiClient.Chat(ctx, systemPrompt, prompt); chatErr == nil {
+			return chatResult.Text, diff.Commits, nil
 		} else {
 			output.PrintWarning(fmt.Sprintf("Primary AI failed: %v", chatErr))
 		}
@@ -128,8 +132,8 @@ func (r *replState) generateMRDescriptionFromCommits(sourceBranch, targetBranch 
 	// Tier 1: Direct AI with commit-based prompt
 	if aiErr := r.ensureAI(); aiErr == nil {
 		prompt := ai.BuildMRDescriptionPrompt(sourceBranch, targetBranch, commits)
-		if desc, chatErr := r.aiClient.Chat(ctx, systemPrompt, prompt); chatErr == nil {
-			return desc, commits, nil
+		if chatResult, chatErr := r.aiClient.Chat(ctx, systemPrompt, prompt); chatErr == nil {
+			return chatResult.Text, commits, nil
 		}
 	}
 
@@ -144,10 +148,11 @@ func (r *replState) enhanceTicketDescription(userContext string) (string, string
 	systemPrompt := "You are a technical writer that creates precise, actionable GitLab tickets. Be concise — no filler, no extra detail."
 	prompt := ai.BuildTicketDescriptionPrompt(userContext)
 
-	response, err := r.aiClient.Chat(ctx, systemPrompt, prompt)
+	chatResult, err := r.aiClient.Chat(ctx, systemPrompt, prompt)
 	if err != nil {
 		return "", "", err
 	}
+	response := chatResult.Text
 
 	response = strings.TrimSpace(response)
 	lines := strings.SplitN(response, "\n", 2)
@@ -294,7 +299,11 @@ Tips you can share:
 - Any unrecognized input is sent to AI as a question.
 
 When users ask about commands, capabilities, or how to use this tool, provide helpful guidance based on these commands. For all other questions, answer as a general-purpose AI assistant.`
-	return r.aiClient.Chat(ctx, systemPrompt, prompt)
+	result, err := r.aiClient.Chat(ctx, systemPrompt, prompt)
+	if err != nil {
+		return "", err
+	}
+	return result.Text, nil
 }
 
 // ─── Chat Handler ────────────────────────────────────────────────────────────
