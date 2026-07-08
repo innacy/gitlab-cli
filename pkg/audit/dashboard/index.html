@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>git-agent — Activity Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e;
+    --green-0: #161b22; --green-1: #0e4429; --green-2: #006d32;
+    --green-3: #26a641; --green-4: #39d353;
+    --accent: #58a6ff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; padding: 24px; }
+  h1 { font-size: 24px; margin-bottom: 8px; }
+  h2 { font-size: 18px; margin-bottom: 12px; color: var(--muted); }
+  .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
+  .card-full { grid-column: 1 / -1; }
+  .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .stat { text-align: center; }
+  .stat-value { font-size: 32px; font-weight: 700; color: var(--accent); }
+  .stat-label { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .heatmap { display: flex; gap: 3px; flex-wrap: wrap; justify-content: flex-start; }
+  .heatmap-week { display: flex; flex-direction: column; gap: 3px; }
+  .heatmap-cell {
+    width: 12px; height: 12px; border-radius: 2px; background: var(--green-0);
+    position: relative; cursor: pointer;
+  }
+  .heatmap-cell:hover::after {
+    content: attr(data-tooltip); position: absolute; bottom: 18px; left: 50%;
+    transform: translateX(-50%); background: #1f2937; color: var(--text);
+    padding: 4px 8px; border-radius: 4px; font-size: 11px; white-space: nowrap; z-index: 10;
+  }
+  .heatmap-cell.l1 { background: var(--green-1); }
+  .heatmap-cell.l2 { background: var(--green-2); }
+  .heatmap-cell.l3 { background: var(--green-3); }
+  .heatmap-cell.l4 { background: var(--green-4); }
+  .chart-container { position: relative; height: 250px; }
+  .quality-bar { display: flex; height: 32px; border-radius: 4px; overflow: hidden; margin: 8px 0; }
+  .quality-bar div { display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; }
+  .q-accepted { background: var(--green-3); }
+  .q-edited { background: #d29922; }
+  .q-discarded { background: #f85149; }
+  .legend { display: flex; gap: 16px; margin-top: 8px; font-size: 13px; }
+  .legend span::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
+  .legend .la::before { background: var(--green-3); }
+  .legend .le::before { background: #d29922; }
+  .legend .ld::before { background: #f85149; }
+  #range-select { background: var(--surface); color: var(--text); border: 1px solid var(--border); padding: 6px 12px; border-radius: 6px; font-size: 14px; margin-bottom: 16px; }
+</style>
+</head>
+<body>
+<h1>git-agent</h1>
+<p class="subtitle">Activity Dashboard</p>
+<select id="range-select">
+  <option value="month">Last 30 days</option>
+  <option value="week">Last 7 days</option>
+</select>
+<div class="grid">
+  <div class="card card-full">
+    <h2>Activity Heatmap</h2>
+    <div id="heatmap" class="heatmap"></div>
+  </div>
+  <div class="card card-full">
+    <h2>Summary</h2>
+    <div id="stats" class="stat-grid"></div>
+  </div>
+  <div class="card">
+    <h2>Model Usage</h2>
+    <div class="chart-container"><canvas id="modelChart"></canvas></div>
+  </div>
+  <div class="card">
+    <h2>AI Output Quality</h2>
+    <div id="quality"></div>
+  </div>
+</div>
+<script>
+const API = '';
+let modelChart = null;
+
+async function fetchJSON(url) {
+  const r = await fetch(url);
+  return r.json();
+}
+
+async function loadHeatmap() {
+  const year = new Date().getFullYear();
+  const data = await fetchJSON(API + '/api/heatmap?year=' + year);
+  const map = {};
+  (data || []).forEach(d => map[d.Date] = d.Count);
+  const el = document.getElementById('heatmap');
+  el.innerHTML = '';
+  const today = new Date();
+  const start = new Date(today.getFullYear(), 0, 1);
+  const startDay = start.getDay();
+  let week = document.createElement('div');
+  week.className = 'heatmap-week';
+  for (let i = 0; i < startDay; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'heatmap-cell';
+    cell.style.visibility = 'hidden';
+    week.appendChild(cell);
+  }
+  const d = new Date(start);
+  while (d <= today) {
+    if (d.getDay() === 0 && week.children.length > 0) {
+      el.appendChild(week);
+      week = document.createElement('div');
+      week.className = 'heatmap-week';
+    }
+    const key = d.toISOString().slice(0, 10);
+    const count = map[key] || 0;
+    const cell = document.createElement('div');
+    const level = count === 0 ? '' : count <= 2 ? 'l1' : count <= 5 ? 'l2' : count <= 10 ? 'l3' : 'l4';
+    cell.className = 'heatmap-cell ' + level;
+    cell.setAttribute('data-tooltip', key + ': ' + count + ' actions');
+    week.appendChild(cell);
+    d.setDate(d.getDate() + 1);
+  }
+  if (week.children.length > 0) el.appendChild(week);
+}
+
+async function loadStats(range) {
+  const data = await fetchJSON(API + '/api/summary?range=' + range);
+  const el = document.getElementById('stats');
+  const stats = [
+    ['Commands', data.total_events],
+    ['AI Calls', data.ai_generations],
+    ['MRs Created', data.mrs_created],
+    ['MRs Reviewed', data.mrs_reviewed],
+    ['Tickets', data.tickets_created],
+    ['Files', data.files_written],
+  ];
+  el.innerHTML = stats.map(function(s) {
+    return '<div class="stat"><div class="stat-value">' + s[1] + '</div><div class="stat-label">' + s[0] + '</div></div>';
+  }).join('');
+}
+
+async function loadModels(range) {
+  const data = await fetchJSON(API + '/api/models?range=' + range);
+  const ctx = document.getElementById('modelChart').getContext('2d');
+  if (modelChart) modelChart.destroy();
+  if (!data || data.length === 0) return;
+  modelChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: data.map(function(d) { return d.Model; }),
+      datasets: [{ data: data.map(function(d) { return d.Count; }), backgroundColor: ['#58a6ff','#3fb950','#d29922','#f85149','#bc8cff'] }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#e6edf3' } } } }
+  });
+}
+
+async function loadQuality(range) {
+  const data = await fetchJSON(API + '/api/accuracy?range=' + range);
+  const total = data.accepted + data.edited + data.discarded;
+  const el = document.getElementById('quality');
+  if (total === 0) { el.innerHTML = '<p style="color:var(--muted)">No AI outputs recorded yet.</p>'; return; }
+  const pA = Math.round(data.accepted / total * 100);
+  const pE = Math.round(data.edited / total * 100);
+  const pD = 100 - pA - pE;
+  let html = '<div class="quality-bar">';
+  if (pA > 0) html += '<div class="q-accepted" style="width:' + pA + '%">' + pA + '%</div>';
+  if (pE > 0) html += '<div class="q-edited" style="width:' + pE + '%">' + pE + '%</div>';
+  if (pD > 0) html += '<div class="q-discarded" style="width:' + pD + '%">' + pD + '%</div>';
+  html += '</div>';
+  html += '<div class="legend">';
+  html += '<span class="la">Accepted (' + data.accepted + ')</span>';
+  html += '<span class="le">Edited (' + data.edited + ')</span>';
+  html += '<span class="ld">Discarded (' + data.discarded + ')</span>';
+  html += '</div>';
+  if (data.avg_edit_ratio > 0) html += '<p style="color:var(--muted);margin-top:8px;font-size:13px">Avg edit ratio: ' + Math.round(data.avg_edit_ratio * 100) + '%</p>';
+  el.innerHTML = html;
+}
+
+async function loadAll(range) {
+  await Promise.all([loadHeatmap(), loadStats(range), loadModels(range), loadQuality(range)]);
+}
+
+document.getElementById('range-select').addEventListener('change', function(e) { loadAll(e.target.value); });
+loadAll('month');
+</script>
+</body>
+</html>
