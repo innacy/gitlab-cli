@@ -11,6 +11,7 @@ import (
 
 	"gitlab-ai/internal/models"
 	"gitlab-ai/pkg/ai"
+	"gitlab-ai/pkg/audit"
 	"gitlab-ai/pkg/output"
 	"gitlab-ai/pkg/platform"
 )
@@ -90,11 +91,22 @@ func (r *replState) handleCreateTicketContent(args []string) {
 	r.stats.filesCreated++
 	fmt.Println()
 
-	r.ticketPostAction(project, title, description)
+	var ticketEventID int64
+	if r.auditor != nil {
+		ticketEventID, _ = r.auditor.Record(audit.Event{
+			Command:  "create-ticket-content",
+			Category: audit.CategoryAIGeneration,
+			Project:  project,
+			Success:  true,
+		})
+		r.auditAI(ticketEventID, chatResult)
+	}
+
+	r.ticketPostAction(project, title, description, ticketEventID)
 }
 
 // ticketPostAction shows options after content generation: create new, update existing, or skip.
-func (r *replState) ticketPostAction(project, title, description string) {
+func (r *replState) ticketPostAction(project, title, description string, auditEventID int64) {
 	choice := r.promptForChoice("What would you like to do with this content?", []string{
 		"Create new ticket",
 		"Update existing ticket description",
@@ -104,9 +116,12 @@ func (r *replState) ticketPostAction(project, title, description string) {
 	switch choice {
 	case 0:
 		r.createNewTicket(project, title, description)
+		r.auditOutcome(auditEventID, audit.OutcomeAccepted, nil)
 	case 1:
 		r.updateExistingTicket(project, description)
+		r.auditOutcome(auditEventID, audit.OutcomeAccepted, nil)
 	default:
+		r.auditOutcome(auditEventID, audit.OutcomeDiscarded, nil)
 		return
 	}
 }
@@ -444,6 +459,17 @@ func (r *replState) handleCreateEpicContent(args []string) {
 	r.stats.filesCreated++
 	fmt.Println()
 
+	var epicEventID int64
+	if r.auditor != nil {
+		epicEventID, _ = r.auditor.Record(audit.Event{
+			Command:  "create-epic-content",
+			Category: audit.CategoryAIGeneration,
+			Project:  project,
+			Success:  true,
+		})
+		r.auditAI(epicEventID, chatResult)
+	}
+
 	if r.promptForYesNoPost("Do you want to create an epic with this content?") {
 		groupPath := r.activeTeam
 		if groupPath == "" {
@@ -465,6 +491,9 @@ func (r *replState) handleCreateEpicContent(args []string) {
 		output.PrintSuccess(fmt.Sprintf("Epic #%d created: %s", epic.IID, epic.Title))
 		output.PrintURLOpen(epic.WebURL)
 		fmt.Println()
+		r.auditOutcome(epicEventID, audit.OutcomeAccepted, nil)
+	} else {
+		r.auditOutcome(epicEventID, audit.OutcomeDiscarded, nil)
 	}
 }
 
