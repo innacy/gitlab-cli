@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -14,6 +15,7 @@ import (
 
 	"gitlab-ai/internal/models"
 	"gitlab-ai/pkg/ai"
+	"gitlab-ai/pkg/audit"
 	"gitlab-ai/pkg/config"
 	"gitlab-ai/pkg/output"
 	"gitlab-ai/pkg/platform"
@@ -28,8 +30,10 @@ type replState struct {
 	rl       *readline.Instance
 	username   string
 
-	startedAt   time.Time
-	reviews     map[string]*reviewEntry
+	startedAt      time.Time
+	auditor        *audit.Recorder
+	lastAIEventID  int64
+	reviews        map[string]*reviewEntry
 	reviewOrder []string
 	stats       sessionStats
 
@@ -329,6 +333,13 @@ func RunREPL(cfg *config.AppConfig) {
 		reviews: make(map[string]*reviewEntry),
 	}
 
+	auditor, auditErr := audit.Open(".git-agent/audit")
+	if auditErr != nil {
+		fmt.Fprintf(os.Stderr, "⚠ audit trail disabled: %v\n", auditErr)
+	} else {
+		r.auditor = auditor
+	}
+
 	completer := r.buildCompleter()
 
 	rl, err := readline.NewEx(&readline.Config{
@@ -453,6 +464,30 @@ func RunREPL(cfg *config.AppConfig) {
 
 // ─── Command Dispatch ────────────────────────────────────────────────────────
 
+var significantCommands = map[string]string{
+	"mr-review":             audit.CategoryAIGeneration,
+	"mr-comment":            audit.CategoryGitLabMutation,
+	"mr-open":               audit.CategoryGitLabMutation,
+	"mr-merge":              audit.CategoryGitLabMutation,
+	"mr-approve":            audit.CategoryGitLabMutation,
+	"mr-unapprove":          audit.CategoryGitLabMutation,
+	"mr-close":              audit.CategoryGitLabMutation,
+	"mr-reopen":             audit.CategoryGitLabMutation,
+	"mr-rebase":             audit.CategoryGitLabMutation,
+	"mr-update":             audit.CategoryGitLabMutation,
+	"ticket-open":           audit.CategoryGitLabMutation,
+	"ticket-open-empty":     audit.CategoryGitLabMutation,
+	"ticket-close":          audit.CategoryGitLabMutation,
+	"ticket-reopen":         audit.CategoryGitLabMutation,
+	"ticket-update":         audit.CategoryGitLabMutation,
+	"create-ticket-content": audit.CategoryAIGeneration,
+	"create-ticket-desc":    audit.CategoryAIGeneration,
+	"create-epic-content":   audit.CategoryAIGeneration,
+	"pipeline-triage":       audit.CategoryAIGeneration,
+	"ship":                  audit.CategoryAIGeneration,
+	"branch-cleanup":        audit.CategoryGitLabMutation,
+}
+
 func (r *replState) dispatch(line string) bool {
 	parts := strings.Fields(line)
 	if len(parts) == 0 {
@@ -460,6 +495,7 @@ func (r *replState) dispatch(line string) bool {
 	}
 
 	cmd := strings.ToLower(parts[0])
+	start := time.Now()
 
 	switch cmd {
 	case "start":
@@ -555,6 +591,22 @@ func (r *replState) dispatch(line string) bool {
 		r.handleIntentOrChat(line)
 	}
 
+	if r.auditor != nil {
+		if category, ok := significantCommands[cmd]; ok {
+			project := ""
+			if len(parts) > 1 {
+				project = parts[1]
+			}
+			r.auditor.Record(audit.Event{
+				Command:    cmd,
+				Category:   category,
+				Project:    project,
+				DurationMs: time.Since(start).Milliseconds(),
+				Success:    true,
+			})
+		}
+	}
+
 	return false
 }
 
@@ -635,6 +687,9 @@ func (r *replState) handleStart() {
 }
 
 func (r *replState) handleExit() {
+	if r.auditor != nil {
+		r.auditor.Close()
+	}
 
 	fmt.Println()
 	if r.provider != nil && !r.startedAt.IsZero() {
@@ -664,4 +719,23 @@ func newSpinner(suffix string) *spinner.Spinner {
 
 func now() time.Time {
 	return time.Now()
+}
+
+func (r *replState) auditAI(eventID int64, result ai.ChatResult) {
+	if r.auditor == nil || eventID <= 0 {
+		return
+	}
+	r.auditor.RecordAIOutput(audit.AIOutput{
+		EventID:   eventID,
+		Provider:  r.aiClient.ProviderName(),
+		Model:     result.Model,
+		CharCount: len(result.Text),
+	})
+}
+
+func (r *replState) auditOutcome(eventID int64, outcome string, editRatio *float64) {
+	if r.auditor == nil || eventID <= 0 {
+		return
+	}
+	r.auditor.RecordOutcome(eventID, outcome, editRatio)
 }
