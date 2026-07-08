@@ -80,7 +80,7 @@ type geminiError struct {
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 // Chat sends a message with an optional system prompt and returns the text response.
-func (c *GeminiClient) Chat(ctx context.Context, systemPrompt, userMessage string) (string, error) {
+func (c *GeminiClient) Chat(ctx context.Context, systemPrompt, userMessage string) (ChatResult, error) {
 	reqBody := geminiRequest{
 		Contents: []geminiContent{
 			{
@@ -102,44 +102,44 @@ func (c *GeminiClient) Chat(ctx context.Context, systemPrompt, userMessage strin
 
 	body, err := json.Marshal(reqBody)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal request: %w", err)
+		return ChatResult{}, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
 	url := fmt.Sprintf("%s/%s:generateContent?key=%s", geminiAPI, c.model, c.apiKey)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+		return ChatResult{}, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("API request failed: %w", err)
+		return ChatResult{}, fmt.Errorf("API request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
+		return ChatResult{}, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		var errResp geminiResponse
 		if json.Unmarshal(respBody, &errResp) == nil && errResp.Error != nil {
-			return "", fmt.Errorf("Gemini API error (%d): %s", errResp.Error.Code, errResp.Error.Message)
+			return ChatResult{}, fmt.Errorf("Gemini API error (%d): %s", errResp.Error.Code, errResp.Error.Message)
 		}
-		return "", fmt.Errorf("Gemini API error (%d): %s", resp.StatusCode, string(respBody))
+		return ChatResult{}, fmt.Errorf("Gemini API error (%d): %s", resp.StatusCode, string(respBody))
 	}
 
 	var gemResp geminiResponse
 	if err := json.Unmarshal(respBody, &gemResp); err != nil {
-		return "", fmt.Errorf("failed to parse response: %w", err)
+		return ChatResult{}, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	if gemResp.Error != nil {
-		return "", fmt.Errorf("Gemini API error: %s", gemResp.Error.Message)
+		return ChatResult{}, fmt.Errorf("Gemini API error: %s", gemResp.Error.Message)
 	}
 
 	// Extract text from candidates
@@ -152,8 +152,8 @@ func (c *GeminiClient) Chat(ctx context.Context, systemPrompt, userMessage strin
 
 	text := result.String()
 	if text == "" {
-		return "", fmt.Errorf("empty response from Gemini API")
+		return ChatResult{}, fmt.Errorf("empty response from Gemini API")
 	}
 
-	return text, nil
+	return ChatResult{Text: text, Model: c.model}, nil
 }

@@ -69,7 +69,7 @@ type openAIAPIError struct {
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 // Chat sends a message with an optional system prompt and returns the text response.
-func (c *NvidiaClient) Chat(ctx context.Context, systemPrompt, userMessage string) (string, error) {
+func (c *NvidiaClient) Chat(ctx context.Context, systemPrompt, userMessage string) (ChatResult, error) {
 	messages := make([]openAIMessage, 0, 2)
 	if systemPrompt != "" {
 		messages = append(messages, openAIMessage{Role: "system", Content: systemPrompt})
@@ -84,12 +84,12 @@ func (c *NvidiaClient) Chat(ctx context.Context, systemPrompt, userMessage strin
 
 	body, err := json.Marshal(reqBody)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal request: %w", err)
+		return ChatResult{}, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", nvidiaAPI, bytes.NewReader(body))
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+		return ChatResult{}, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -97,30 +97,30 @@ func (c *NvidiaClient) Chat(ctx context.Context, systemPrompt, userMessage strin
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("API request failed: %w", err)
+		return ChatResult{}, fmt.Errorf("API request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
+		return ChatResult{}, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		var errResp openAIChatResponse
 		if json.Unmarshal(respBody, &errResp) == nil && errResp.Error != nil {
-			return "", fmt.Errorf("NVIDIA API error (%d): %s", resp.StatusCode, errResp.Error.Message)
+			return ChatResult{}, fmt.Errorf("NVIDIA API error (%d): %s", resp.StatusCode, errResp.Error.Message)
 		}
-		return "", fmt.Errorf("NVIDIA API error (%d): %s", resp.StatusCode, string(respBody))
+		return ChatResult{}, fmt.Errorf("NVIDIA API error (%d): %s", resp.StatusCode, string(respBody))
 	}
 
 	var chatResp openAIChatResponse
 	if err := json.Unmarshal(respBody, &chatResp); err != nil {
-		return "", fmt.Errorf("failed to parse response: %w", err)
+		return ChatResult{}, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	if chatResp.Error != nil {
-		return "", fmt.Errorf("NVIDIA API error: %s", chatResp.Error.Message)
+		return ChatResult{}, fmt.Errorf("NVIDIA API error: %s", chatResp.Error.Message)
 	}
 
 	var result strings.Builder
@@ -130,8 +130,8 @@ func (c *NvidiaClient) Chat(ctx context.Context, systemPrompt, userMessage strin
 
 	text := result.String()
 	if text == "" {
-		return "", fmt.Errorf("empty response from NVIDIA API")
+		return ChatResult{}, fmt.Errorf("empty response from NVIDIA API")
 	}
 
-	return text, nil
+	return ChatResult{Text: text, Model: c.model}, nil
 }
