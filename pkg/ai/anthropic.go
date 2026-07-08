@@ -86,7 +86,7 @@ type apiErrorResponse struct {
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 // Chat sends a message with an optional system prompt and returns the text response.
-func (c *AnthropicClient) Chat(ctx context.Context, systemPrompt, userMessage string) (string, error) {
+func (c *AnthropicClient) Chat(ctx context.Context, systemPrompt, userMessage string) (ChatResult, error) {
 	reqBody := messagesRequest{
 		Model:     c.model,
 		MaxTokens: c.maxTokens,
@@ -98,12 +98,12 @@ func (c *AnthropicClient) Chat(ctx context.Context, systemPrompt, userMessage st
 
 	body, err := json.Marshal(reqBody)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal request: %w", err)
+		return ChatResult{}, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", anthropicAPI, bytes.NewReader(body))
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+		return ChatResult{}, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -112,26 +112,26 @@ func (c *AnthropicClient) Chat(ctx context.Context, systemPrompt, userMessage st
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("API request failed: %w", err)
+		return ChatResult{}, fmt.Errorf("API request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
+		return ChatResult{}, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		var errResp apiErrorResponse
 		if json.Unmarshal(respBody, &errResp) == nil && errResp.Error != nil {
-			return "", fmt.Errorf("Anthropic API error (%d): %s", resp.StatusCode, errResp.Error.Message)
+			return ChatResult{}, fmt.Errorf("Anthropic API error (%d): %s", resp.StatusCode, errResp.Error.Message)
 		}
-		return "", fmt.Errorf("Anthropic API error (%d): %s", resp.StatusCode, string(respBody))
+		return ChatResult{}, fmt.Errorf("Anthropic API error (%d): %s", resp.StatusCode, string(respBody))
 	}
 
 	var msgResp messagesResponse
 	if err := json.Unmarshal(respBody, &msgResp); err != nil {
-		return "", fmt.Errorf("failed to parse response: %w", err)
+		return ChatResult{}, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	// Extract text from content blocks
@@ -144,8 +144,8 @@ func (c *AnthropicClient) Chat(ctx context.Context, systemPrompt, userMessage st
 
 	text := result.String()
 	if text == "" {
-		return "", fmt.Errorf("empty response from Anthropic API")
+		return ChatResult{}, fmt.Errorf("empty response from Anthropic API")
 	}
 
-	return text, nil
+	return ChatResult{Text: text, Model: c.model}, nil
 }
