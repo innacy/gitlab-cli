@@ -108,6 +108,11 @@ func (r *replState) buildCompleter() *readline.PrefixCompleter {
 		readline.PcItem("create-epic-content", projectDynamic),
 		readline.PcItem("release"),
 		readline.PcItem("config"),
+		readline.PcItem("stats",
+			readline.PcItem("week"),
+			readline.PcItem("month"),
+			readline.PcItem("dashboard"),
+		),
 		readline.PcItem("help"),
 		readline.PcItem("exit"),
 	)
@@ -412,6 +417,10 @@ func RunREPL(cfg *config.AppConfig) {
 	bold.Println("Workflow:")
 	fmt.Println("  ship                                   - Full flow: ticket → multi-select folders → commit → MR → update ticket")
 	fmt.Println()
+	bold.Println("Stats:")
+	fmt.Println("  stats [week|month] [YYYY-MM]           - Activity summary")
+	fmt.Println("  stats dashboard                        - Open web dashboard")
+	fmt.Println()
 	theme.Muted.Println("  start  - Start session  |  exit  - End session")
 	theme.Muted.Println("  Any other input is sent to AI as a question.")
 	fmt.Println()
@@ -572,6 +581,8 @@ func (r *replState) dispatch(line string) bool {
 		r.handleRelease()
 	case "config":
 		r.handleConfig()
+	case "stats":
+		r.handleStats(parts[1:])
 	case "help":
 		r.showHelp()
 	case "exit":
