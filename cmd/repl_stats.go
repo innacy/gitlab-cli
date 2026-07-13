@@ -149,7 +149,9 @@ func (r *replState) handleStatsDashboard() {
 	output.GetTheme().Muted.Println("  Press Enter to stop the dashboard and return to the REPL.")
 	fmt.Println()
 
+	r.rl.SetPrompt("")
 	r.rl.Readline()
+	r.rl.SetPrompt("git-agent> ")
 	r.resetIdle()
 	shutdown()
 	output.PrintSuccess("Dashboard stopped.")
