@@ -96,12 +96,14 @@ type IssueService interface {
 }
 
 type UpdateIssueOptions struct {
-	Title       *string
-	Description *string
-	Labels      []string
-	Assignee    *string
-	AssigneeID  *int
-	Milestone   *string
+	Title        *string
+	Description  *string
+	Labels       []string
+	AddLabels    []string
+	RemoveLabels []string
+	Assignee     *string
+	AssigneeID   *int
+	Milestone    *string
 }
 
 type RepoService interface {
