@@ -361,6 +361,14 @@ func (s *issueService) UpdateIssue(project string, issueIID int, opts platform.U
 		labels := gogitlab.LabelOptions(opts.Labels)
 		updateOpts.Labels = &labels
 	}
+	if len(opts.AddLabels) > 0 {
+		add := gogitlab.LabelOptions(opts.AddLabels)
+		updateOpts.AddLabels = &add
+	}
+	if len(opts.RemoveLabels) > 0 {
+		rm := gogitlab.LabelOptions(opts.RemoveLabels)
+		updateOpts.RemoveLabels = &rm
+	}
 	if opts.AssigneeID != nil {
 		updateOpts.AssigneeIDs = &[]int{*opts.AssigneeID}
 	}

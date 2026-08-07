@@ -300,15 +300,15 @@ func (r *replState) promptForMultiSelect(title string, items []string, batchSize
 
 		for {
 			options := make([]string, 0, len(available)+3)
+			if batchHasSelection {
+				options = append(options, "Skip rest")
+				options = append(options, "Done with this batch")
+			} else {
+				options = append(options, "Skip")
+			}
 			options = append(options, "Select all in this batch")
 			for _, item := range available {
 				options = append(options, item.label)
-			}
-			if batchHasSelection {
-				options = append(options, "Done with this batch")
-				options = append(options, "Skip rest")
-			} else {
-				options = append(options, "Skip")
 			}
 
 			choice := r.interactiveSelect(batchLabel, options)
@@ -319,27 +319,38 @@ func (r *replState) promptForMultiSelect(title string, items []string, batchSize
 				return selected
 			}
 			if batchHasSelection {
-				if choice == len(options)-1 { // "Skip rest"
+				if choice == 0 { // "Skip rest"
 					return selected
 				}
-				if choice == len(options)-2 { // "Done with this batch"
+				if choice == 1 { // "Done with this batch"
+					break
+				}
+				if choice == 2 { // "Select all in this batch"
+					for _, item := range available {
+						selected = append(selected, item.originalIdx)
+					}
+					output.PrintSuccess(fmt.Sprintf("Selected all %d items in this batch", len(available)))
 					break
 				}
 			} else {
-				if choice == len(options)-1 { // "Skip"
+				if choice == 0 { // "Skip"
+					break
+				}
+				if choice == 1 { // "Select all in this batch"
+					for _, item := range available {
+						selected = append(selected, item.originalIdx)
+					}
+					output.PrintSuccess(fmt.Sprintf("Selected all %d items in this batch", len(available)))
 					break
 				}
 			}
 
-			if choice == 0 {
-				for _, item := range available {
-					selected = append(selected, item.originalIdx)
-				}
-				output.PrintSuccess(fmt.Sprintf("Selected all %d items in this batch", len(available)))
-				break
+			// Items start after control options
+			controlOffset := 2
+			if batchHasSelection {
+				controlOffset = 3
 			}
-
-			itemIdx := choice - 1
+			itemIdx := choice - controlOffset
 			selected = append(selected, available[itemIdx].originalIdx)
 			output.PrintSuccess(fmt.Sprintf("Selected: %s", available[itemIdx].label))
 			batchHasSelection = true
