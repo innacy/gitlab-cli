@@ -69,6 +69,8 @@ func (r *replState) handleStats(args []string) {
 	models, _ := r.auditor.ModelUsage(from, to)
 	accuracy, _ := r.auditor.AccuracyStats(from, to)
 	busiest, _ := r.auditor.BusiestDays(from, to, 3)
+	modelByDate, _ := r.auditor.ModelUsageByDate(from, to)
+	modelPerf, _ := r.auditor.ModelPerformance(from, to)
 
 	lines := []string{
 		fmt.Sprintf("Activity — %s", label),
@@ -93,6 +95,30 @@ func (r *replState) handleStats(args []string) {
 				pct = m.Count * 100 / total
 			}
 			lines = append(lines, fmt.Sprintf("  %-24s %d (%d%%)", m.Model+":", m.Count, pct))
+		}
+	}
+
+	if len(modelPerf) > 0 {
+		lines = append(lines, "", "Model Performance:")
+		lines = append(lines, fmt.Sprintf("  %-28s %6s  %6s  %6s  %6s", "Model", "Calls", "Avg", "Min", "Max"))
+		for _, m := range modelPerf {
+			lines = append(lines, fmt.Sprintf("  %-28s %6d  %5.1fs  %5.1fs  %5.1fs",
+				m.Model, m.Count,
+				float64(m.AvgMs)/1000, float64(m.MinMs)/1000, float64(m.MaxMs)/1000))
+		}
+		lines = append(lines, fmt.Sprintf("  Fastest: %s (avg %.1fs)", modelPerf[0].Model, float64(modelPerf[0].AvgMs)/1000))
+	}
+
+	if len(modelByDate) > 0 {
+		lines = append(lines, "", "Model Usage by Date:")
+		lastDate := ""
+		for _, m := range modelByDate {
+			if m.Date != lastDate {
+				t, _ := time.Parse("2006-01-02", m.Date)
+				lines = append(lines, fmt.Sprintf("  %s:", t.Format("Mon Jan 02")))
+				lastDate = m.Date
+			}
+			lines = append(lines, fmt.Sprintf("    %-24s %d call(s)", m.Model, m.Count))
 		}
 	}
 

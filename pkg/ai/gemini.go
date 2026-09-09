@@ -81,6 +81,7 @@ type geminiError struct {
 
 // Chat sends a message with an optional system prompt and returns the text response.
 func (c *GeminiClient) Chat(ctx context.Context, systemPrompt, userMessage string) (ChatResult, error) {
+	start := time.Now()
 	reqBody := geminiRequest{
 		Contents: []geminiContent{
 			{
@@ -155,5 +156,5 @@ func (c *GeminiClient) Chat(ctx context.Context, systemPrompt, userMessage strin
 		return ChatResult{}, fmt.Errorf("empty response from Gemini API")
 	}
 
-	return ChatResult{Text: text, Model: c.model}, nil
+	return ChatResult{Text: text, Model: c.model, DurationMs: time.Since(start).Milliseconds()}, nil
 }

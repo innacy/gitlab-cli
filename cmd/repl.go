@@ -24,18 +24,18 @@ import (
 
 // replState holds the interactive session state.
 type replState struct {
-	cfg        *config.AppConfig
-	provider   platform.Provider
+	cfg      *config.AppConfig
+	provider platform.Provider
 	aiClient ai.ChatClient
 	rl       *readline.Instance
-	username   string
+	username string
 
-	startedAt      time.Time
-	auditor        *audit.Recorder
-	lastAIEventID  int64
-	reviews        map[string]*reviewEntry
-	reviewOrder []string
-	stats       sessionStats
+	startedAt     time.Time
+	auditor       *audit.Recorder
+	lastAIEventID int64
+	reviews       map[string]*reviewEntry
+	reviewOrder   []string
+	stats         sessionStats
 
 	activeTeam      string
 	projectCache    []models.ProjectInfo
@@ -421,7 +421,7 @@ func RunREPL(cfg *config.AppConfig) {
 	fmt.Println("  stats [week|month] [YYYY-MM]           - Activity summary")
 	fmt.Println("  stats dashboard                        - Open web dashboard")
 	fmt.Println()
-	theme.Muted.Println("  start  - Start session  |  exit  - End session")
+	theme.Muted.Println("  exit  - End session")
 	theme.Muted.Println("  Any other input is sent to AI as a question.")
 	fmt.Println()
 	idleTimeout := time.Duration(cfg.CLI.IdleTimeoutMinutes) * time.Minute
@@ -438,6 +438,9 @@ func RunREPL(cfg *config.AppConfig) {
 		rl.Close()
 	})
 	defer r.idleTimer.Stop()
+
+	// run start command automatically
+	r.handleStart()
 
 	for {
 		line, err := rl.Readline()
@@ -690,10 +693,12 @@ func (r *replState) handleStart() {
 	s.Stop()
 
 	if len(projects) > 0 {
-		output.PrintSuccess(fmt.Sprintf("Loaded %d projects for team '%s'", len(projects), r.activeTeam))
+		output.PrintSuccess(fmt.Sprintf("Loaded projects for team '%s'", r.activeTeam))
 	} else {
-		output.PrintWarning("No projects found for the selected team.")
+		output.PrintWarning("No projects found for the selected team. Loading full list in background...")
 	}
+
+	go r.ensureFullCache()
 	fmt.Println()
 }
 
@@ -737,10 +742,11 @@ func (r *replState) auditAI(eventID int64, result ai.ChatResult) {
 		return
 	}
 	r.auditor.RecordAIOutput(audit.AIOutput{
-		EventID:   eventID,
-		Provider:  r.aiClient.ProviderName(),
-		Model:     result.Model,
-		CharCount: len(result.Text),
+		EventID:    eventID,
+		Provider:   r.aiClient.ProviderName(),
+		Model:      result.Model,
+		CharCount:  len(result.Text),
+		DurationMs: result.DurationMs,
 	})
 }
 

@@ -27,6 +27,8 @@ func NewServer(rec *Recorder) *Server {
 	s.mux.HandleFunc("/api/heatmap", s.handleHeatmap)
 	s.mux.HandleFunc("/api/accuracy", s.handleAccuracy)
 	s.mux.HandleFunc("/api/models", s.handleModels)
+	s.mux.HandleFunc("/api/model-stats", s.handleModelStats)
+	s.mux.HandleFunc("/api/model-performance", s.handleModelPerformance)
 	s.mux.HandleFunc("/", s.handleDashboard)
 	return s
 }
@@ -153,6 +155,26 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.writeJSON(w, models)
+}
+
+func (s *Server) handleModelStats(w http.ResponseWriter, r *http.Request) {
+	from, to := s.parseDateRange(r)
+	stats, err := s.recorder.ModelUsageByDate(from, to)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.writeJSON(w, stats)
+}
+
+func (s *Server) handleModelPerformance(w http.ResponseWriter, r *http.Request) {
+	from, to := s.parseDateRange(r)
+	perf, err := s.recorder.ModelPerformance(from, to)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.writeJSON(w, perf)
 }
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {

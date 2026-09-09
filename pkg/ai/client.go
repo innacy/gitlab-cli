@@ -3,8 +3,9 @@ package ai
 import "context"
 
 type ChatResult struct {
-	Text  string
-	Model string
+	Text       string
+	Model      string
+	DurationMs int64
 }
 
 type ChatClient interface {

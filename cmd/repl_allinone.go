@@ -96,12 +96,14 @@ func (r *replState) handleShip(args []string) {
 	output.PrintURLOpen(ticketURL)
 	fmt.Println()
 
-	if _, err := r.provider.Issues().UpdateIssue(ticketProject, ticketIID, platform.UpdateIssueOptions{
+	var hasDescription bool
+	if issue, err := r.provider.Issues().UpdateIssue(ticketProject, ticketIID, platform.UpdateIssueOptions{
 		AddLabels: []string{"In Progress"},
 	}); err != nil {
 		output.PrintWarning(fmt.Sprintf("Could not set 'In Progress' label: %v", err))
 	} else {
 		output.PrintSuccess("Status → In Progress")
+		hasDescription = strings.TrimSpace(issue.Description) != ""
 	}
 
 	folders := r.shipSelectFolders()
@@ -126,10 +128,16 @@ func (r *replState) handleShip(args []string) {
 		return
 	}
 
-	output.PrintSuccess(fmt.Sprintf("Shipped %d/%d folder(s). Updating ticket...", successCount, len(folders)))
+	output.PrintSuccess(fmt.Sprintf("Shipped %d/%d folder(s).", successCount, len(folders)))
 	fmt.Println()
 
-	time.Sleep(3 * time.Second) // Wait a moment for GitLab to register the MRs
+	if hasDescription {
+		output.PrintSuccess(fmt.Sprintf("Ticket #%d already has a description — skipping update.", ticketIID))
+		return
+	}
+
+	output.PrintSuccess("Updating ticket...")
+	time.Sleep(3 * time.Second)
 	r.shipUpdateTicketDesc(ticketProject, ticketIID)
 }
 
@@ -278,16 +286,12 @@ func (r *replState) shipProcessFolder(folder string, ticketIID int, ticketURL st
 
 	currentBranch := getCurrentBranch(folder)
 
-	branchName := fmt.Sprintf("fix/%d", ticketIID)
-	s = newSpinner(fmt.Sprintf(" Creating branch '%s'...", branchName))
-	s.Start()
-	_, err = runGitCmd(folder, "checkout", "-b", branchName)
-	s.Stop()
+	branchName, err := r.checkoutShipBranch(folder, ticketIID)
 	if err != nil {
-		output.PrintError(fmt.Sprintf("Failed to create branch '%s': %v", branchName, err))
+		output.PrintError(fmt.Sprintf("Failed to switch branch: %v", err))
 		return "", false
 	}
-	output.PrintSuccess(fmt.Sprintf("Created branch: %s", branchName))
+	output.PrintSuccess(fmt.Sprintf("On branch: %s", branchName))
 
 	s = newSpinner(" Staging changes...")
 	s.Start()
@@ -449,6 +453,31 @@ Diff:
 	return fmt.Sprintf("fix(%s): Update %d files in %s", ticketURL, fileCount, filepath.Base(folder))
 }
 
+func (r *replState) checkoutShipBranch(folder string, ticketIID int) (string, error) {
+	branchName := fmt.Sprintf("fix/%d", ticketIID)
+
+	s := newSpinner(fmt.Sprintf(" Switching to branch '%s'...", branchName))
+	s.Start()
+	_, err := runGitCmd(folder, "checkout", "-B", branchName)
+	s.Stop()
+	if err == nil {
+		return branchName, nil
+	}
+	output.PrintWarning(fmt.Sprintf("Branch '%s' failed: %v — trying fallback...", branchName, err))
+
+	branchName = fmt.Sprintf("fix/%d-v1", ticketIID)
+	s = newSpinner(fmt.Sprintf(" Switching to branch '%s'...", branchName))
+	s.Start()
+	_, err = runGitCmd(folder, "checkout", "-B", branchName)
+	s.Stop()
+	if err == nil {
+		return branchName, nil
+	}
+
+	return "", fmt.Errorf("branch checkout failed for fix/%d and fix/%d-v1: %w", ticketIID, ticketIID, err)
+}
+
+
 func (r *replState) shipUpdateTicketDesc(project string, ticketIID int) {
 	const maxRetries = 5
 	const retryDelay = 3 * time.Second
@@ -559,10 +588,8 @@ func (r *replState) shipUpdateTicketDesc(project string, ticketIID int) {
 	s = newSpinner(fmt.Sprintf(" Updating ticket #%d...", ticketIID))
 	s.Start()
 	updated, err := r.provider.Issues().UpdateIssue(project, ticketIID, platform.UpdateIssueOptions{
-		Title:        &title,
-		Description:  &description,
-		AddLabels:    []string{"Waiting for MR"},
-		RemoveLabels: []string{"In Progress"},
+		Title:       &title,
+		Description: &description,
 	})
 	s.Stop()
 
@@ -572,7 +599,6 @@ func (r *replState) shipUpdateTicketDesc(project string, ticketIID int) {
 	}
 
 	output.PrintSuccess(fmt.Sprintf("Ticket #%d updated: %s", updated.IID, updated.Title))
-	output.PrintSuccess("Status → Waiting for MR")
 	output.PrintURLOpen(updated.WebURL)
 	fmt.Println()
 }

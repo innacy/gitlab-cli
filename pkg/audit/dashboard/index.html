@@ -52,6 +52,12 @@
   .legend .le::before { background: #d29922; }
   .legend .ld::before { background: #f85149; }
   #range-select { background: var(--surface); color: var(--text); border: 1px solid var(--border); padding: 6px 12px; border-radius: 6px; font-size: 14px; margin-bottom: 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; }
+  .badge-fast { background: var(--green-2); color: var(--green-4); }
+  .date-group { color: var(--accent); font-weight: 600; padding-top: 8px; }
 </style>
 </head>
 <body>
@@ -78,6 +84,14 @@
     <h2>AI Output Quality</h2>
     <div id="quality"></div>
   </div>
+  <div class="card card-full">
+    <h2>Model Performance</h2>
+    <div id="model-perf"></div>
+  </div>
+  <div class="card card-full">
+    <h2>Model Usage by Date</h2>
+    <div id="model-by-date"></div>
+  </div>
 </div>
 <script>
 const API = '';
@@ -88,16 +102,23 @@ async function fetchJSON(url) {
   return r.json();
 }
 
+function utcToday() {
+  const n = new Date();
+  return new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate()));
+}
+function pad(n) { return n < 10 ? '0' + n : '' + n; }
+function utcKey(d) { return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()); }
+
 async function loadHeatmap() {
-  const year = new Date().getFullYear();
+  const today = utcToday();
+  const year = today.getUTCFullYear();
   const data = await fetchJSON(API + '/api/heatmap?year=' + year);
   const map = {};
   (data || []).forEach(d => map[d.Date] = d.Count);
   const el = document.getElementById('heatmap');
   el.innerHTML = '';
-  const today = new Date();
-  const start = new Date(today.getFullYear(), 0, 1);
-  const startDay = start.getDay();
+  const start = new Date(Date.UTC(year, 0, 1));
+  const startDay = start.getUTCDay();
   let week = document.createElement('div');
   week.className = 'heatmap-week';
   for (let i = 0; i < startDay; i++) {
@@ -108,19 +129,19 @@ async function loadHeatmap() {
   }
   const d = new Date(start);
   while (d <= today) {
-    if (d.getDay() === 0 && week.children.length > 0) {
+    if (d.getUTCDay() === 0 && week.children.length > 0) {
       el.appendChild(week);
       week = document.createElement('div');
       week.className = 'heatmap-week';
     }
-    const key = d.toISOString().slice(0, 10);
+    const key = utcKey(d);
     const count = map[key] || 0;
     const cell = document.createElement('div');
     const level = count === 0 ? '' : count <= 2 ? 'l1' : count <= 5 ? 'l2' : count <= 10 ? 'l3' : 'l4';
     cell.className = 'heatmap-cell ' + level;
     cell.setAttribute('data-tooltip', key + ': ' + count + ' actions');
     week.appendChild(cell);
-    d.setDate(d.getDate() + 1);
+    d.setUTCDate(d.getUTCDate() + 1);
   }
   if (week.children.length > 0) el.appendChild(week);
 }
@@ -178,8 +199,41 @@ async function loadQuality(range) {
   el.innerHTML = html;
 }
 
+async function loadModelPerf(range) {
+  const data = await fetchJSON(API + '/api/model-performance?range=' + range);
+  const el = document.getElementById('model-perf');
+  if (!data || data.length === 0) { el.innerHTML = '<p style="color:var(--muted)">No AI timing data recorded yet.</p>'; return; }
+  let html = '<table><tr><th>Model</th><th>Calls</th><th>Avg</th><th>Min</th><th>Max</th><th></th></tr>';
+  data.forEach(function(m, i) {
+    const badge = i === 0 ? ' <span class="badge badge-fast">Fastest</span>' : '';
+    html += '<tr><td>' + m.Model + badge + '</td><td>' + m.Count + '</td>'
+      + '<td>' + (m.AvgMs / 1000).toFixed(1) + 's</td>'
+      + '<td>' + (m.MinMs / 1000).toFixed(1) + 's</td>'
+      + '<td>' + (m.MaxMs / 1000).toFixed(1) + 's</td>'
+      + '<td></td></tr>';
+  });
+  html += '</table>';
+  el.innerHTML = html;
+}
+
+async function loadModelByDate(range) {
+  const data = await fetchJSON(API + '/api/model-stats?range=' + range);
+  const el = document.getElementById('model-by-date');
+  if (!data || data.length === 0) { el.innerHTML = '<p style="color:var(--muted)">No model usage data yet.</p>'; return; }
+  let html = '<table><tr><th>Date</th><th>Model</th><th>Calls</th></tr>';
+  let lastDate = '';
+  data.forEach(function(m) {
+    const dateCell = m.Date !== lastDate ? m.Date : '';
+    const cls = m.Date !== lastDate ? ' class="date-group"' : '';
+    html += '<tr><td' + cls + '>' + dateCell + '</td><td>' + m.Model + '</td><td>' + m.Count + '</td></tr>';
+    lastDate = m.Date;
+  });
+  html += '</table>';
+  el.innerHTML = html;
+}
+
 async function loadAll(range) {
-  await Promise.all([loadHeatmap(), loadStats(range), loadModels(range), loadQuality(range)]);
+  await Promise.all([loadHeatmap(), loadStats(range), loadModels(range), loadQuality(range), loadModelPerf(range), loadModelByDate(range)]);
 }
 
 document.getElementById('range-select').addEventListener('change', function(e) { loadAll(e.target.value); });
