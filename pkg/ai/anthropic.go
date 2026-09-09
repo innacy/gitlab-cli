@@ -87,6 +87,7 @@ type apiErrorResponse struct {
 
 // Chat sends a message with an optional system prompt and returns the text response.
 func (c *AnthropicClient) Chat(ctx context.Context, systemPrompt, userMessage string) (ChatResult, error) {
+	start := time.Now()
 	reqBody := messagesRequest{
 		Model:     c.model,
 		MaxTokens: c.maxTokens,
@@ -147,5 +148,5 @@ func (c *AnthropicClient) Chat(ctx context.Context, systemPrompt, userMessage st
 		return ChatResult{}, fmt.Errorf("empty response from Anthropic API")
 	}
 
-	return ChatResult{Text: text, Model: c.model}, nil
+	return ChatResult{Text: text, Model: c.model, DurationMs: time.Since(start).Milliseconds()}, nil
 }

@@ -21,6 +21,21 @@ type ModelUsageRow struct {
 	Count int
 }
 
+type ModelUsageByDateRow struct {
+	Date  string
+	Model string
+	Count int
+}
+
+type ModelPerformanceRow struct {
+	Model    string
+	Count    int
+	AvgMs    int64
+	MinMs    int64
+	MaxMs    int64
+	TotalMs  int64
+}
+
 type AccuracyResult struct {
 	Accepted     int
 	Edited       int
@@ -165,4 +180,60 @@ func (r *Recorder) BusiestDays(from, to string, limit int) ([]HeatmapDay, error)
 		days = append(days, d)
 	}
 	return days, rows.Err()
+}
+
+func (r *Recorder) ModelUsageByDate(from, to string) ([]ModelUsageByDateRow, error) {
+	rows, err := r.db.Query(
+		`SELECT e.date, a.model, COUNT(*)
+		 FROM ai_outputs a
+		 JOIN events e ON a.event_id = e.id
+		 WHERE e.date >= ? AND e.date <= ?
+		 GROUP BY e.date, a.model
+		 ORDER BY e.date DESC, COUNT(*) DESC`,
+		from, to,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []ModelUsageByDateRow
+	for rows.Next() {
+		var m ModelUsageByDateRow
+		if err := rows.Scan(&m.Date, &m.Model, &m.Count); err != nil {
+			return nil, err
+		}
+		result = append(result, m)
+	}
+	return result, rows.Err()
+}
+
+func (r *Recorder) ModelPerformance(from, to string) ([]ModelPerformanceRow, error) {
+	rows, err := r.db.Query(
+		`SELECT a.model, COUNT(*),
+		        COALESCE(AVG(a.duration_ms), 0),
+		        COALESCE(MIN(a.duration_ms), 0),
+		        COALESCE(MAX(a.duration_ms), 0),
+		        COALESCE(SUM(a.duration_ms), 0)
+		 FROM ai_outputs a
+		 JOIN events e ON a.event_id = e.id
+		 WHERE e.date >= ? AND e.date <= ? AND a.duration_ms > 0
+		 GROUP BY a.model
+		 ORDER BY AVG(a.duration_ms) ASC`,
+		from, to,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []ModelPerformanceRow
+	for rows.Next() {
+		var m ModelPerformanceRow
+		if err := rows.Scan(&m.Model, &m.Count, &m.AvgMs, &m.MinMs, &m.MaxMs, &m.TotalMs); err != nil {
+			return nil, err
+		}
+		result = append(result, m)
+	}
+	return result, rows.Err()
 }

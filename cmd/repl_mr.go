@@ -665,72 +665,44 @@ func (r *replState) handleMRUpdate(args []string) {
 		}
 	}
 
-	fields := []string{"Title", "Description", "Labels", "Cancel"}
-	choice := r.promptForChoice("What to update?", fields)
-	if choice < 0 || choice == 3 {
+	mrInfo, err := r.provider.MRs().GetMergeRequest(project, mrNumber)
+	if err != nil {
+		output.PrintError(fmt.Sprintf("Failed to fetch MR details: %v", err))
 		return
 	}
 
-	var opts platform.UpdateMROptions
-	switch choice {
-	case 0:
-		title := r.promptForText("new-title")
-		if title == "" {
-			output.PrintError("Title cannot be empty.")
-			return
-		}
-		opts.Title = &title
-	case 1:
-		mrInfo, err := r.provider.MRs().GetMergeRequest(project, mrNumber)
-		if err != nil {
-			output.PrintError(fmt.Sprintf("Failed to fetch MR details: %v", err))
-			return
-		}
-
-		if aiErr := r.ensureAI(); aiErr != nil {
-			output.PrintWarning(fmt.Sprintf("AI unavailable (%v), falling back to manual input.", aiErr))
-			desc := r.promptForText("new-description")
-			opts.Description = &desc
-			break
-		}
-
-		s := newSpinner(fmt.Sprintf(" Generating description via %s...", r.aiClient.ProviderName()))
-		s.Start()
-		desc, _, genErr := r.generateMRDescription(project, mrInfo.SourceBranch, mrInfo.TargetBranch)
-		s.Stop()
-
-		if genErr != nil {
-			output.PrintError(fmt.Sprintf("AI generation failed: %v", genErr))
-			output.PrintWarning("Falling back to manual input.")
-			desc = r.promptForText("new-description")
-		} else {
-			fmt.Println()
-			output.PrintSuccess("Generated description:")
-			fmt.Println()
-			fmt.Println(desc)
-			fmt.Println()
-
-			confirm := r.promptForChoice("Use this description?", []string{"Yes, update MR", "Edit manually", "Cancel"})
-			switch confirm {
-			case 1:
-				desc = r.promptForText("new-description")
-			case 2, -1:
-				return
-			}
-		}
-		opts.Description = &desc
-	case 2:
-		labelsStr := r.promptForText("labels (comma-separated)")
-		if labelsStr != "" {
-			labels := strings.Split(labelsStr, ",")
-			for i := range labels {
-				labels[i] = strings.TrimSpace(labels[i])
-			}
-			opts.Labels = labels
-		}
+	if aiErr := r.ensureAI(); aiErr != nil {
+		output.PrintError(fmt.Sprintf("AI unavailable: %v", aiErr))
+		return
 	}
 
-	s := newSpinner(fmt.Sprintf(" Updating MR #%d...", mrNumber))
+	s := newSpinner(fmt.Sprintf(" Generating title & description via %s...", r.aiClient.ProviderName()))
+	s.Start()
+	desc, _, genErr := r.generateMRDescription(project, mrInfo.SourceBranch, mrInfo.TargetBranch)
+	s.Stop()
+
+	if genErr != nil {
+		output.PrintError(fmt.Sprintf("AI generation failed: %v", genErr))
+		return
+	}
+
+	title := branchToMRTitle(mrInfo.SourceBranch)
+	if bInfo, bErr := r.provider.Repos().GetBranch(project, mrInfo.SourceBranch); bErr == nil && bInfo.CommitTitle != "" {
+		title = bInfo.CommitTitle
+	}
+
+	fmt.Println()
+	output.PrintSuccess(fmt.Sprintf("Title: %s", title))
+	fmt.Println()
+	output.PrintSuccess("Description:")
+	fmt.Println(desc)
+	fmt.Println()
+
+	var opts platform.UpdateMROptions
+	opts.Title = &title
+	opts.Description = &desc
+
+	s = newSpinner(fmt.Sprintf(" Updating MR #%d...", mrNumber))
 	s.Start()
 	mr, err := r.provider.MRs().UpdateMR(project, mrNumber, opts)
 	s.Stop()

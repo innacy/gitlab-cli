@@ -11,7 +11,7 @@ gitlab:
   # default_project: "group/my-project"
   # parent_folder: "/home/user/projects"   # folder containing multiple git repos (for all-in-one)
 
-# AI provider: "anthropic" or "gemini"
+# AI provider: "anthropic", "gemini", or "nvidia"
 ai:
   provider: "anthropic"
   timeout_seconds: 180       # HTTP timeout for AI API calls (default: 180)
@@ -20,6 +20,7 @@ ai:
     api_key: ""              # or set ANTHROPIC_API_KEY env var
     # api_key_env: "ANTHROPIC_API_KEY"
     model: "claude-sonnet-4-20250514"
+    # fallback_model: "claude-haiku-4-20250514"   # used if primary model fails
     max_tokens: 8192
     temperature: 0.7
 
@@ -27,13 +28,19 @@ ai:
     api_key: ""              # or set GEMINI_API_KEY env var
     # api_key_env: "GEMINI_API_KEY"
     model: "gemini-2.5-flash"
+    # fallback_model: "gemini-2.0-flash"          # used if primary model fails
     max_tokens: 8192
 
   nvidia:
     api_key: ""              # or set NVIDIA_API_KEY env var
     # api_key_env: "NVIDIA_API_KEY"
-    model: "meta/llama-3.1-70b-instruct"
-    max_tokens: 8192
+    model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+    fallback_model: "nvidia/llama-3.3-nemotron-super-49b-v1"  # used if primary model fails after retries
+    max_tokens: 65536
+    temperature: 0.6
+    top_p: 0.95
+    # enable_thinking: true    # sends chat_template_kwargs.enable_thinking to NIM API
+    reasoning_budget: 16384  # optional: token budget for chain-of-thought (model-dependent)
 
 # Review template sections used by mr-review
 review:

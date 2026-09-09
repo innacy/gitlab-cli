@@ -47,27 +47,34 @@ type AIConfig struct {
 
 // NvidiaConfig holds NVIDIA NIM-specific settings.
 type NvidiaConfig struct {
-	APIKey    string `mapstructure:"api_key" yaml:"api_key"`
-	APIKeyEnv string `mapstructure:"api_key_env" yaml:"api_key_env"`
-	Model     string `mapstructure:"model" yaml:"model"`
-	MaxTokens int    `mapstructure:"max_tokens" yaml:"max_tokens"`
+	APIKey          string  `mapstructure:"api_key" yaml:"api_key"`
+	APIKeyEnv       string  `mapstructure:"api_key_env" yaml:"api_key_env"`
+	Model           string  `mapstructure:"model" yaml:"model"`
+	FallbackModel   string  `mapstructure:"fallback_model" yaml:"fallback_model"`
+	MaxTokens       int     `mapstructure:"max_tokens" yaml:"max_tokens"`
+	Temperature     float64 `mapstructure:"temperature" yaml:"temperature"`
+	TopP            float64 `mapstructure:"top_p" yaml:"top_p"`
+	EnableThinking  bool    `mapstructure:"enable_thinking" yaml:"enable_thinking"`
+	ReasoningBudget int     `mapstructure:"reasoning_budget" yaml:"reasoning_budget"`
 }
 
 // GeminiConfig holds Google Gemini-specific settings.
 type GeminiConfig struct {
-	APIKey    string `mapstructure:"api_key" yaml:"api_key"`
-	APIKeyEnv string `mapstructure:"api_key_env" yaml:"api_key_env"`
-	Model     string `mapstructure:"model" yaml:"model"`
-	MaxTokens int    `mapstructure:"max_tokens" yaml:"max_tokens"`
+	APIKey        string `mapstructure:"api_key" yaml:"api_key"`
+	APIKeyEnv     string `mapstructure:"api_key_env" yaml:"api_key_env"`
+	Model         string `mapstructure:"model" yaml:"model"`
+	FallbackModel string `mapstructure:"fallback_model" yaml:"fallback_model"`
+	MaxTokens     int    `mapstructure:"max_tokens" yaml:"max_tokens"`
 }
 
 // AnthropicConfig holds Anthropic-specific settings.
 type AnthropicConfig struct {
-	APIKey      string  `mapstructure:"api_key" yaml:"api_key"`
-	APIKeyEnv   string  `mapstructure:"api_key_env" yaml:"api_key_env"`
-	Model       string  `mapstructure:"model" yaml:"model"`
-	MaxTokens   int     `mapstructure:"max_tokens" yaml:"max_tokens"`
-	Temperature float64 `mapstructure:"temperature" yaml:"temperature"`
+	APIKey        string  `mapstructure:"api_key" yaml:"api_key"`
+	APIKeyEnv     string  `mapstructure:"api_key_env" yaml:"api_key_env"`
+	Model         string  `mapstructure:"model" yaml:"model"`
+	FallbackModel string  `mapstructure:"fallback_model" yaml:"fallback_model"`
+	MaxTokens     int     `mapstructure:"max_tokens" yaml:"max_tokens"`
+	Temperature   float64 `mapstructure:"temperature" yaml:"temperature"`
 }
 
 // ReviewConfig holds review-related settings.

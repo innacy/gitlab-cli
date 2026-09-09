@@ -35,7 +35,13 @@ func (r *replState) ensureAI() error {
 		if apiKey == "" {
 			return fmt.Errorf("Anthropic API key not configured.\n  Set 'ai.anthropic.api_key' in config.yaml\n  Or export %s environment variable.\n  Get your key at: https://console.anthropic.com/settings/keys", cfg.APIKeyEnv)
 		}
-		r.aiClient = ai.NewAnthropicClient(apiKey, cfg.Model, cfg.MaxTokens, timeout)
+		primary := ai.NewAnthropicClient(apiKey, cfg.Model, cfg.MaxTokens, timeout)
+		if cfg.FallbackModel != "" {
+			fallback := ai.NewAnthropicClient(apiKey, cfg.FallbackModel, cfg.MaxTokens, timeout)
+			r.aiClient = ai.NewFallbackClient(primary, fallback)
+		} else {
+			r.aiClient = primary
+		}
 
 	case "gemini", "google":
 		cfg := r.cfg.AI.Gemini
@@ -46,7 +52,13 @@ func (r *replState) ensureAI() error {
 		if apiKey == "" {
 			return fmt.Errorf("Gemini API key not configured.\n  Set 'ai.gemini.api_key' in config.yaml\n  Or export %s environment variable.\n  Get your key at: https://aistudio.google.com/apikey", cfg.APIKeyEnv)
 		}
-		r.aiClient = ai.NewGeminiClient(apiKey, cfg.Model, cfg.MaxTokens, timeout)
+		primary := ai.NewGeminiClient(apiKey, cfg.Model, cfg.MaxTokens, timeout)
+		if cfg.FallbackModel != "" {
+			fallback := ai.NewGeminiClient(apiKey, cfg.FallbackModel, cfg.MaxTokens, timeout)
+			r.aiClient = ai.NewFallbackClient(primary, fallback)
+		} else {
+			r.aiClient = primary
+		}
 
 	case "nvidia":
 		cfg := r.cfg.AI.Nvidia
@@ -57,7 +69,20 @@ func (r *replState) ensureAI() error {
 		if apiKey == "" {
 			return fmt.Errorf("NVIDIA API key not configured.\n  Set 'ai.nvidia.api_key' in config.yaml\n  Or export %s environment variable.\n  Get your key at: https://build.nvidia.com/", cfg.APIKeyEnv)
 		}
-		r.aiClient = ai.NewNvidiaClient(apiKey, cfg.Model, cfg.MaxTokens, timeout)
+		opts := ai.NvidiaOpts{
+			Temperature:     cfg.Temperature,
+			TopP:            cfg.TopP,
+			EnableThinking:  cfg.EnableThinking,
+			ReasoningBudget: cfg.ReasoningBudget,
+			Stream:          false,
+		}
+		primary := ai.NewNvidiaClient(apiKey, cfg.Model, cfg.MaxTokens, timeout, opts)
+		if cfg.FallbackModel != "" {
+			fallback := ai.NewNvidiaClient(apiKey, cfg.FallbackModel, cfg.MaxTokens, timeout, opts)
+			r.aiClient = ai.NewFallbackClient(primary, fallback)
+		} else {
+			r.aiClient = primary
+		}
 
 	default:
 		return fmt.Errorf("unknown AI provider: %q (supported: anthropic, gemini, nvidia)", r.cfg.AI.Provider)

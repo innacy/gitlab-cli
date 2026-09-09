@@ -31,10 +31,11 @@ type Event struct {
 }
 
 type AIOutput struct {
-	EventID   int64
-	Provider  string
-	Model     string
-	CharCount int
+	EventID    int64
+	Provider   string
+	Model      string
+	CharCount  int
+	DurationMs int64
 }
 
 type Recorder struct {
@@ -106,8 +107,8 @@ func (r *Recorder) Record(evt Event) (int64, error) {
 
 func (r *Recorder) RecordAIOutput(out AIOutput) error {
 	_, err := r.db.Exec(
-		`INSERT INTO ai_outputs (event_id, provider, model, char_count) VALUES (?, ?, ?, ?)`,
-		out.EventID, out.Provider, out.Model, out.CharCount,
+		`INSERT INTO ai_outputs (event_id, provider, model, char_count, duration_ms) VALUES (?, ?, ?, ?, ?)`,
+		out.EventID, out.Provider, out.Model, out.CharCount, out.DurationMs,
 	)
 	return err
 }
