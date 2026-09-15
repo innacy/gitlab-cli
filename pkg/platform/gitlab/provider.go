@@ -344,6 +344,20 @@ func (s *issueService) ListProjectLabels(project string) ([]string, error) {
 	return s.p.client.ListProjectLabels(project)
 }
 
+func (s *issueService) GetIssue(project string, issueIID int) (*models.Issue, error) {
+	api := s.p.client.API()
+	proj, err := rawgitlab.FindProject(api, project)
+	if err != nil {
+		return nil, err
+	}
+	issue, _, err := api.Issues.GetIssue(proj.ID, issueIID)
+	if err != nil {
+		return nil, utils.NewGitLabError(fmt.Sprintf("failed to get issue #%d", issueIID), err)
+	}
+	converted := convertGitLabIssue(issue)
+	return &converted, nil
+}
+
 func (s *issueService) UpdateIssue(project string, issueIID int, opts platform.UpdateIssueOptions) (*models.Issue, error) {
 	api := s.p.client.API()
 	proj, err := rawgitlab.FindProject(api, project)

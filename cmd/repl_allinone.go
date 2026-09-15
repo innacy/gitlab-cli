@@ -101,6 +101,9 @@ func (r *replState) handleShip(args []string) {
 		AddLabels: []string{"In Progress"},
 	}); err != nil {
 		output.PrintWarning(fmt.Sprintf("Could not set 'In Progress' label: %v", err))
+		if fetched, fetchErr := r.provider.Issues().GetIssue(ticketProject, ticketIID); fetchErr == nil {
+			hasDescription = strings.TrimSpace(fetched.Description) != ""
+		}
 	} else {
 		output.PrintSuccess("Status → In Progress")
 		hasDescription = strings.TrimSpace(issue.Description) != ""
