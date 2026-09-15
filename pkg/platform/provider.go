@@ -87,6 +87,7 @@ type IssueService interface {
 	CreateIssue(project, title, desc string, labels []string) (*models.Issue, error)
 	ListProjectLabels(project string) ([]string, error)
 
+	GetIssue(project string, issueIID int) (*models.Issue, error)
 	UpdateIssue(project string, issueIID int, opts UpdateIssueOptions) (*models.Issue, error)
 	CloseIssue(project string, issueIID int) error
 	ReopenIssue(project string, issueIID int) error
