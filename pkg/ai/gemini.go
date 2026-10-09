@@ -42,9 +42,9 @@ func (c *GeminiClient) ProviderName() string { return "Gemini" }
 // ─── Request / Response types ────────────────────────────────────────────────
 
 type geminiRequest struct {
-	SystemInstruction *geminiContent    `json:"system_instruction,omitempty"`
-	Contents          []geminiContent   `json:"contents"`
-	GenerationConfig  geminiGenConfig   `json:"generationConfig"`
+	SystemInstruction *geminiContent  `json:"system_instruction,omitempty"`
+	Contents          []geminiContent `json:"contents"`
+	GenerationConfig  geminiGenConfig `json:"generationConfig"`
 }
 
 type geminiContent struct {

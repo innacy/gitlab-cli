@@ -22,8 +22,8 @@ func (c *Client) ListTags(projectPath string, limit int) ([]models.TagInfo, erro
 	}
 
 	opts := &gogitlab.ListTagsOptions{
-		OrderBy: gogitlab.Ptr("updated"),
-		Sort:    gogitlab.Ptr("desc"),
+		OrderBy:     gogitlab.Ptr("updated"),
+		Sort:        gogitlab.Ptr("desc"),
 		ListOptions: gogitlab.ListOptions{PerPage: limit},
 	}
 

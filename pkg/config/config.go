@@ -13,11 +13,11 @@ import (
 
 // AppConfig holds the complete application configuration.
 type AppConfig struct {
-	Platform        string       `mapstructure:"platform" yaml:"platform"`
-	GitLab          GitLabConfig `mapstructure:"gitlab" yaml:"gitlab"`
-	AI              AIConfig     `mapstructure:"ai" yaml:"ai"`
-	Review          ReviewConfig `mapstructure:"review" yaml:"review"`
-	Issues          IssuesConfig `mapstructure:"issues" yaml:"issues"`
+	Platform        string                `mapstructure:"platform" yaml:"platform"`
+	GitLab          GitLabConfig          `mapstructure:"gitlab" yaml:"gitlab"`
+	AI              AIConfig              `mapstructure:"ai" yaml:"ai"`
+	Review          ReviewConfig          `mapstructure:"review" yaml:"review"`
+	Issues          IssuesConfig          `mapstructure:"issues" yaml:"issues"`
 	Merge           MergeConfig           `mapstructure:"merge" yaml:"merge"`
 	CLI             CLIConfig             `mapstructure:"cli" yaml:"cli"`
 	Other           OtherOutputConfig     `mapstructure:"other" yaml:"other"`

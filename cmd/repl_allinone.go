@@ -486,7 +486,6 @@ func (r *replState) checkoutShipBranch(folder string, ticketIID int) (string, er
 	return "", fmt.Errorf("branch checkout failed for fix/%d and fix/%d-v1: %w", ticketIID, ticketIID, err)
 }
 
-
 func (r *replState) shipUpdateTicketDesc(project string, ticketIID int) {
 	const maxRetries = 5
 	const retryDelay = 3 * time.Second

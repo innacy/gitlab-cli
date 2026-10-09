@@ -70,8 +70,8 @@ func (c *Client) findBranch(projectID int, candidates ...string) string {
 
 func (c *Client) getLatestTag(projectID int) string {
 	tags, _, err := c.api.Tags.ListTags(projectID, &gogitlab.ListTagsOptions{
-		OrderBy: gogitlab.Ptr("updated"),
-		Sort:    gogitlab.Ptr("desc"),
+		OrderBy:     gogitlab.Ptr("updated"),
+		Sort:        gogitlab.Ptr("desc"),
 		ListOptions: gogitlab.ListOptions{PerPage: 1},
 	})
 	if err != nil || len(tags) == 0 {

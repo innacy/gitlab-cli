@@ -36,20 +36,20 @@ type ReviewSection struct {
 
 // MergeRequestInfo holds the fetched MR data from GitLab.
 type MergeRequestInfo struct {
-	ID           int      `json:"id"`
-	IID          int      `json:"iid"`
-	ProjectID    int      `json:"project_id"`
-	Title        string   `json:"title"`
-	Description  string   `json:"description"`
-	State        string   `json:"state"`
-	Author       string   `json:"author"`
-	AuthorUser   string   `json:"author_user"`
-	SourceBranch string   `json:"source_branch"`
-	TargetBranch string   `json:"target_branch"`
-	WebURL       string   `json:"web_url"`
-	Labels       []string `json:"labels"`
+	ID           int        `json:"id"`
+	IID          int        `json:"iid"`
+	ProjectID    int        `json:"project_id"`
+	Title        string     `json:"title"`
+	Description  string     `json:"description"`
+	State        string     `json:"state"`
+	Author       string     `json:"author"`
+	AuthorUser   string     `json:"author_user"`
+	SourceBranch string     `json:"source_branch"`
+	TargetBranch string     `json:"target_branch"`
+	WebURL       string     `json:"web_url"`
+	Labels       []string   `json:"labels"`
 	Changes      []MRChange `json:"changes"`
-	DiffContent  string   `json:"diff_content"`
+	DiffContent  string     `json:"diff_content"`
 }
 
 // MRChange represents a single file change in a merge request.

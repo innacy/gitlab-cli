@@ -115,9 +115,9 @@ func (c *Client) ListProjectMRs(projectPath, state string, limit int) ([]models.
 	}
 
 	opts := &gogitlab.ListProjectMergeRequestsOptions{
-		State:   gogitlab.Ptr(state),
-		OrderBy: gogitlab.Ptr("updated_at"),
-		Sort:    gogitlab.Ptr("desc"),
+		State:       gogitlab.Ptr(state),
+		OrderBy:     gogitlab.Ptr("updated_at"),
+		Sort:        gogitlab.Ptr("desc"),
 		ListOptions: gogitlab.ListOptions{PerPage: limit},
 	}
 

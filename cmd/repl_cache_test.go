@@ -72,15 +72,15 @@ type mockProvider struct {
 	repos *mockRepoService
 }
 
-func (m *mockProvider) Name() string               { return "mock" }
-func (m *mockProvider) Username() string            { return "test" }
-func (m *mockProvider) UserDisplayName() string     { return "Test User" }
-func (m *mockProvider) UserID() int                 { return 1 }
+func (m *mockProvider) Name() string                  { return "mock" }
+func (m *mockProvider) Username() string              { return "test" }
+func (m *mockProvider) UserDisplayName() string       { return "Test User" }
+func (m *mockProvider) UserID() int                   { return 1 }
 func (m *mockProvider) Repos() platform.RepoService   { return m.repos }
 func (m *mockProvider) MRs() platform.MRService       { return nil }
-func (m *mockProvider) Issues() platform.IssueService  { return nil }
-func (m *mockProvider) CI() platform.CIService         { return nil }
-func (m *mockProvider) Epics() platform.EpicService    { return nil }
+func (m *mockProvider) Issues() platform.IssueService { return nil }
+func (m *mockProvider) CI() platform.CIService        { return nil }
+func (m *mockProvider) Epics() platform.EpicService   { return nil }
 
 func makeTestProjects(n int) []models.ProjectInfo {
 	projects := make([]models.ProjectInfo, n)

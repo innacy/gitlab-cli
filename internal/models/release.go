@@ -5,7 +5,7 @@ import "time"
 type ReleaseStatus int
 
 const (
-	ReleasePending  ReleaseStatus = iota
+	ReleasePending ReleaseStatus = iota
 	ReleaseUpToDate
 	ReleaseInvalid
 )

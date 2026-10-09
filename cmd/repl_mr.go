@@ -10,8 +10,8 @@ import (
 	"github.com/briandowns/spinner"
 
 	"gitlab-ai/internal/models"
-	projectctx "gitlab-ai/pkg/context"
 	"gitlab-ai/pkg/audit"
+	projectctx "gitlab-ai/pkg/context"
 	"gitlab-ai/pkg/output"
 	"gitlab-ai/pkg/platform"
 )
