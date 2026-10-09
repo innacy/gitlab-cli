@@ -113,6 +113,7 @@ func (c *Client) DeleteBranch(projectPath, branchName string) error {
 	}
 	return nil
 }
+
 // GetBranch gets a specific branch
 func (c *Client) GetBranch(projectPath, branchName string) (*models.BranchInfo, error) {
 	project, err := FindProject(c.api, projectPath)

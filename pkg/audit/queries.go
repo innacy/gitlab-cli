@@ -28,12 +28,12 @@ type ModelUsageByDateRow struct {
 }
 
 type ModelPerformanceRow struct {
-	Model    string
-	Count    int
-	AvgMs    int64
-	MinMs    int64
-	MaxMs    int64
-	TotalMs  int64
+	Model   string
+	Count   int
+	AvgMs   int64
+	MinMs   int64
+	MaxMs   int64
+	TotalMs int64
 }
 
 type AccuracyResult struct {

@@ -140,7 +140,7 @@ func (r *replState) handlePipelineTriage(args []string) {
 
 		prompt := ai.BuildPipelineFailurePrompt(job.name, log)
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	chatResult, aiErr := r.aiClient.Chat(ctx, ai.BuildSystemPrompt(), prompt)
+		chatResult, aiErr := r.aiClient.Chat(ctx, ai.BuildSystemPrompt(), prompt)
 		cancel()
 		s.Stop()
 

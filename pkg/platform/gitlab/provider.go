@@ -33,17 +33,17 @@ func New(cfg *config.AppConfig) (*Provider, error) {
 	return &Provider{client: client, cfg: cfg}, nil
 }
 
-func (p *Provider) Name() string            { return "gitlab" }
-func (p *Provider) Username() string         { return p.client.User().Username }
-func (p *Provider) UserDisplayName() string  { return p.client.User().Name }
-func (p *Provider) UserID() int              { return p.client.User().ID }
+func (p *Provider) Name() string                 { return "gitlab" }
+func (p *Provider) Username() string             { return p.client.User().Username }
+func (p *Provider) UserDisplayName() string      { return p.client.User().Name }
+func (p *Provider) UserID() int                  { return p.client.User().ID }
 func (p *Provider) RawClient() *rawgitlab.Client { return p.client }
 
 func (p *Provider) MRs() platform.MRService       { return &mrService{p} }
-func (p *Provider) Issues() platform.IssueService  { return &issueService{p} }
-func (p *Provider) Repos() platform.RepoService    { return &repoService{p} }
-func (p *Provider) CI() platform.CIService         { return &ciService{p} }
-func (p *Provider) Epics() platform.EpicService     { return &epicService{p} }
+func (p *Provider) Issues() platform.IssueService { return &issueService{p} }
+func (p *Provider) Repos() platform.RepoService   { return &repoService{p} }
+func (p *Provider) CI() platform.CIService        { return &ciService{p} }
+func (p *Provider) Epics() platform.EpicService   { return &epicService{p} }
 
 // ─── MR Service ──────────────────────────────────────────────────────────────
 
@@ -92,8 +92,8 @@ func (s *mrService) MergeMR(project string, mrIID int, opts platform.MergeOption
 		return err
 	}
 	mergeOpts := &gogitlab.AcceptMergeRequestOptions{
-		Squash:                 gogitlab.Ptr(opts.Squash),
-		ShouldRemoveSourceBranch: gogitlab.Ptr(opts.RemoveSourceBranch),
+		Squash:                    gogitlab.Ptr(opts.Squash),
+		ShouldRemoveSourceBranch:  gogitlab.Ptr(opts.RemoveSourceBranch),
 		MergeWhenPipelineSucceeds: gogitlab.Ptr(opts.MergeWhenReady),
 	}
 	_, _, err = api.MergeRequests.AcceptMergeRequest(proj.ID, mrIID, mergeOpts)
@@ -265,7 +265,7 @@ func (s *mrService) ListMRDiscussions(project string, mrIID int) ([]platform.Dis
 	result := make([]platform.Discussion, 0, len(discussions))
 	for _, d := range discussions {
 		disc := platform.Discussion{
-			ID:       d.ID,
+			ID: d.ID,
 		}
 		for _, n := range d.Notes {
 			resolved := false
@@ -431,7 +431,7 @@ func (s *issueService) SearchIssues(project, query string) ([]models.Issue, erro
 		return nil, err
 	}
 	issues, _, err := api.Issues.ListProjectIssues(proj.ID, &gogitlab.ListProjectIssuesOptions{
-		Search: gogitlab.Ptr(query),
+		Search:      gogitlab.Ptr(query),
 		ListOptions: gogitlab.ListOptions{PerPage: 20},
 	})
 	if err != nil {

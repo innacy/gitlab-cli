@@ -96,13 +96,13 @@ type openAIAPIError struct {
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 const (
-	nvidiaMaxRetries       = 4
-	nvidiaMaxRetries503    = 8
-	nvidiaBaseBackoff      = 2 * time.Second
-	nvidiaBaseBackoff503   = 4 * time.Second
-	nvidiaMaxBackoff       = 30 * time.Second
-	nvidiaBackoffFactor    = 2.0
-	nvidiaJitterFraction   = 0.3
+	nvidiaMaxRetries     = 4
+	nvidiaMaxRetries503  = 8
+	nvidiaBaseBackoff    = 2 * time.Second
+	nvidiaBaseBackoff503 = 4 * time.Second
+	nvidiaMaxBackoff     = 30 * time.Second
+	nvidiaBackoffFactor  = 2.0
+	nvidiaJitterFraction = 0.3
 )
 
 func isRetryableStatus(code int) bool {

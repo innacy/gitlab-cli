@@ -47,16 +47,16 @@ type MRService interface {
 }
 
 type InlineComment struct {
-	FilePath    string
-	NewLine     int
-	OldLine     int
-	Body        string
+	FilePath string
+	NewLine  int
+	OldLine  int
+	Body     string
 }
 
 type Discussion struct {
-	ID        string
-	Resolved  bool
-	Notes     []DiscussionNote
+	ID       string
+	Resolved bool
+	Notes    []DiscussionNote
 }
 
 type DiscussionNote struct {
