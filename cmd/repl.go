@@ -108,6 +108,7 @@ func (r *replState) buildCompleter() *readline.PrefixCompleter {
 		readline.PcItem("create-epic-content", projectDynamic),
 		readline.PcItem("release"),
 		readline.PcItem("config"),
+		readline.PcItem("switch-team"),
 		readline.PcItem("stats",
 			readline.PcItem("week"),
 			readline.PcItem("month"),
@@ -417,6 +418,11 @@ func RunREPL(cfg *config.AppConfig) {
 	bold.Println("Workflow:")
 	fmt.Println("  ship                                   - Full flow: ticket → multi-select folders → commit → MR → update ticket")
 	fmt.Println()
+	bold.Println("Session:")
+	fmt.Println("  start                                  - Start session (auto-runs on first command)")
+	fmt.Println("  switch-team                            - Switch active team")
+	fmt.Println("  config                                 - Show current configuration")
+	fmt.Println()
 	bold.Println("Stats:")
 	fmt.Println("  stats [week|month] [YYYY-MM]           - Activity summary")
 	fmt.Println("  stats dashboard                        - Open web dashboard")
@@ -584,6 +590,8 @@ func (r *replState) dispatch(line string) bool {
 		r.handleRelease()
 	case "config":
 		r.handleConfig()
+	case "switch-team":
+		r.handleSwitchTeam()
 	case "stats":
 		r.handleStats(parts[1:])
 	case "help":
@@ -659,12 +667,12 @@ func (r *replState) ensureSession() bool {
 	output.PrintURL(r.cfg.GitLab.BaseURL)
 
 	if len(r.cfg.Teams) == 1 {
-		r.activeTeam = r.cfg.Teams[0]
+		r.activeTeam = r.cfg.Teams[0].Name
 		output.PrintSuccess(fmt.Sprintf("Team: %s", r.activeTeam))
 	} else if len(r.cfg.Teams) > 1 {
-		choice := r.interactiveSelect("Select team", r.cfg.Teams)
+		choice := r.interactiveSelect("Select team", r.cfg.TeamNames())
 		if choice >= 0 {
-			r.activeTeam = r.cfg.Teams[choice]
+			r.activeTeam = r.cfg.Teams[choice].Name
 			output.PrintSuccess(fmt.Sprintf("Team: %s", r.activeTeam))
 		}
 	}

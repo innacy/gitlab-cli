@@ -25,8 +25,11 @@ func (r *replState) handleTicketOpenEmpty(args []string) {
 
 	project := r.getConfiguredProject()
 	if project == "" {
-		output.PrintError("No project configured. Set 'gitlab.default_project' or 'projects' in config.")
-		return
+		project = r.promptForProject("Issues project")
+		if project == "" {
+			output.PrintError("No project selected.")
+			return
+		}
 	}
 	project = r.resolveProject(project)
 
@@ -67,7 +70,7 @@ func (r *replState) createEmptyTicket(project string) (*models.Issue, error) {
 }
 
 func (r *replState) getConfiguredProject() string {
-	for _, p := range r.cfg.Projects {
+	for _, p := range r.cfg.ActiveProjects(r.activeTeam) {
 		project := strings.TrimSpace(p)
 		if project != "" {
 			return project
@@ -152,8 +155,11 @@ func (r *replState) shipGetTicket() (iid int, webURL string, project string) {
 
 	project = r.getConfiguredProject()
 	if project == "" {
-		output.PrintError("No project configured. Set 'gitlab.default_project' or 'projects' in config.")
-		return 0, "", ""
+		project = r.promptForProject("Issues project")
+		if project == "" {
+			output.PrintError("No project selected.")
+			return 0, "", ""
+		}
 	}
 	project = r.resolveProject(project)
 
@@ -171,7 +177,7 @@ func (r *replState) shipGetTicket() (iid int, webURL string, project string) {
 		return issue.IID, issue.WebURL, project
 
 	case 1:
-		iid := r.pickTicket(project, "Select ticket to work with")
+		iid := r.pickTicket(project, "Select issue")
 		if iid <= 0 {
 			return 0, "", ""
 		}
@@ -185,9 +191,9 @@ func (r *replState) shipGetTicket() (iid int, webURL string, project string) {
 }
 
 func (r *replState) shipSelectFolders() []string {
-	parentFolder := strings.TrimSpace(r.cfg.GitLab.ParentFolder)
+	parentFolder := strings.TrimSpace(r.cfg.ActiveParentFolder(r.activeTeam))
 	if parentFolder == "" {
-		output.PrintError("Parent folder not configured. Set 'gitlab.parent_folder' in config.")
+		output.PrintError("Parent folder not configured. Set 'parent_folder' on the team in config, or set 'gitlab.parent_folder' as fallback.")
 		return nil
 	}
 

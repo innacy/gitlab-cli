@@ -591,12 +591,13 @@ func (r *replState) allTeamProjects() []models.ProjectInfo {
 }
 
 func (r *replState) filterIgnoredProjects(projects []models.ProjectInfo) []models.ProjectInfo {
-	if len(r.cfg.IgnoredProjects) == 0 {
+	ignoredList := r.cfg.ActiveIgnoredProjects(r.activeTeam)
+	if len(ignoredList) == 0 {
 		return projects
 	}
 
-	ignored := make(map[string]bool, len(r.cfg.IgnoredProjects))
-	for _, p := range r.cfg.IgnoredProjects {
+	ignored := make(map[string]bool, len(ignoredList))
+	for _, p := range ignoredList {
 		ignored[strings.ToLower(strings.TrimSpace(p))] = true
 	}
 
@@ -662,14 +663,21 @@ func (r *replState) handleRelease() {
 
 	s.Stop()
 
-	cutoff := time.Now().AddDate(0, 0, -90)
+	now := time.Now()
+	cutoff := now.AddDate(0, 0, -90)
+	currentYear, currentMonth, _ := now.Date()
 
-	report := &models.ReleaseReport{GeneratedAt: time.Now()}
+	report := &models.ReleaseReport{GeneratedAt: now}
 	for _, info := range results {
 		switch info.Status {
 		case models.ReleasePending:
 			if !info.LastDevCommitDate.IsZero() && info.LastDevCommitDate.After(cutoff) {
-				report.Pending = append(report.Pending, info)
+				y, m, _ := info.LastDevCommitDate.Date()
+				if y == currentYear && m == currentMonth {
+					report.NewPending = append(report.NewPending, info)
+				} else {
+					report.OldPending = append(report.OldPending, info)
+				}
 			}
 		case models.ReleaseUpToDate:
 			report.Released = append(report.Released, info)
@@ -678,8 +686,11 @@ func (r *replState) handleRelease() {
 		}
 	}
 
-	sort.Slice(report.Pending, func(i, j int) bool {
-		return report.Pending[i].LastDevCommitDate.After(report.Pending[j].LastDevCommitDate)
+	sort.Slice(report.NewPending, func(i, j int) bool {
+		return report.NewPending[i].LastDevCommitDate.After(report.NewPending[j].LastDevCommitDate)
+	})
+	sort.Slice(report.OldPending, func(i, j int) bool {
+		return report.OldPending[i].LastDevCommitDate.After(report.OldPending[j].LastDevCommitDate)
 	})
 
 	output.PrintReleaseReport(report)
@@ -698,23 +709,21 @@ func (r *replState) handleRelease() {
 
 	r.stats.filesCreated++
 
-	if len(report.Pending) > 0 {
-		r.releaseCreateMRs(report.Pending)
+	if len(report.NewPending) > 0 {
+		r.releaseCreateMRs(report.NewPending)
 	}
 }
 
-func (r *replState) releaseCreateMRs(pending []models.ProjectReleaseInfo) {
-	if !r.promptForYesNo(fmt.Sprintf("Raise release MRs for %d pending repos?", len(pending))) {
-		return
-	}
-
-	items := make([]string, len(pending))
-	for i, p := range pending {
+func (r *replState) releaseCreateMRs(newPending []models.ProjectReleaseInfo) {
+	items := make([]string, len(newPending))
+	for i, p := range newPending {
 		items[i] = fmt.Sprintf("%s  (%d commits, last: %s)",
 			p.Name, p.CommitsAhead, output.TimeAgo(p.LastDevCommitDate))
 	}
 
-	indices := r.promptForMultiSelect("Select repos for release MR", items, 10)
+	indices := r.promptForMultiSelect(
+		fmt.Sprintf("Raise release MRs — New repos (%d)", len(newPending)),
+		items, 10)
 	if len(indices) == 0 {
 		output.PrintWarning("No repos selected.")
 		return
@@ -729,7 +738,7 @@ func (r *replState) releaseCreateMRs(pending []models.ProjectReleaseInfo) {
 	fmt.Println()
 
 	for _, idx := range indices {
-		p := pending[idx]
+		p := newPending[idx]
 		sourceBranch := p.DevBranch
 		targetBranch := p.MasterBranch
 
