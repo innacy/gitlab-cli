@@ -406,7 +406,7 @@ func (r *replState) promptForText(label string) string {
 
 func (r *replState) selectProjectWithConfig(title string) string {
 	configured := make([]string, 0, 4)
-	for _, p := range r.cfg.Projects {
+	for _, p := range r.cfg.ActiveProjects(r.activeTeam) {
 		project := strings.TrimSpace(p)
 		if project != "" {
 			configured = append(configured, project)

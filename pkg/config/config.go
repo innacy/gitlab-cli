@@ -3,7 +3,9 @@ package config
 import (
 	"fmt"
 	"os"
+	"reflect"
 
+	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/viper"
 
 	"gitlab-ai/internal/models"
@@ -21,7 +23,7 @@ type AppConfig struct {
 	Other           OtherOutputConfig     `mapstructure:"other" yaml:"other"`
 	TicketContent   ContentTemplateConfig `mapstructure:"ticket_content" yaml:"ticket_content"`
 	EpicContent     ContentTemplateConfig `mapstructure:"epic_content" yaml:"epic_content"`
-	Teams           []string              `mapstructure:"teams" yaml:"teams"`
+	Teams           []TeamConfig          `mapstructure:"teams" yaml:"teams"`
 	Projects        []string              `mapstructure:"projects" yaml:"projects"`
 	IgnoredProjects []string              `mapstructure:"ignored_projects" yaml:"ignored_projects"`
 }
@@ -144,34 +146,177 @@ type CLIConfig struct {
 	OpenInBrowser      bool   `mapstructure:"open_in_browser" yaml:"open_in_browser"`
 }
 
+// TeamConfig holds per-team settings.
+type TeamConfig struct {
+	Name            string   `mapstructure:"name" yaml:"name"`
+	ParentFolder    string   `mapstructure:"parent_folder" yaml:"parent_folder"`
+	Projects        []string `mapstructure:"projects" yaml:"projects"`
+	IgnoredProjects []string `mapstructure:"ignored_projects" yaml:"ignored_projects"`
+}
+
+// TeamNames returns the list of team name strings.
+func (c *AppConfig) TeamNames() []string {
+	names := make([]string, len(c.Teams))
+	for i, t := range c.Teams {
+		names[i] = t.Name
+	}
+	return names
+}
+
+// FindTeam returns the TeamConfig for the given name, or nil if not found.
+func (c *AppConfig) FindTeam(name string) *TeamConfig {
+	for i := range c.Teams {
+		if c.Teams[i].Name == name {
+			return &c.Teams[i]
+		}
+	}
+	return nil
+}
+
+// ActiveParentFolder returns the parent folder for the given team.
+// Falls back to the global gitlab.parent_folder if the team has none set.
+func (c *AppConfig) ActiveParentFolder(teamName string) string {
+	if tc := c.FindTeam(teamName); tc != nil && tc.ParentFolder != "" {
+		return tc.ParentFolder
+	}
+	return c.GitLab.ParentFolder
+}
+
+// ActiveProjects returns the issue/ticket projects for the given team.
+// Falls back to the global projects list if the team has none set.
+func (c *AppConfig) ActiveProjects(teamName string) []string {
+	if tc := c.FindTeam(teamName); tc != nil && len(tc.Projects) > 0 {
+		return tc.Projects
+	}
+	return c.Projects
+}
+
+// ActiveIgnoredProjects returns the ignored projects for the given team.
+// Falls back to the global ignored_projects list if the team has none set.
+func (c *AppConfig) ActiveIgnoredProjects(teamName string) []string {
+	if tc := c.FindTeam(teamName); tc != nil && len(tc.IgnoredProjects) > 0 {
+		return tc.IgnoredProjects
+	}
+	return c.IgnoredProjects
+}
+
 // Load reads configuration from YAML file and environment variables.
 func Load() (*AppConfig, error) {
-	viper.SetConfigName("config")
-	viper.SetConfigType("yaml")
-	viper.AddConfigPath(".")
-	viper.AddConfigPath("./configs")
+	v := viper.New()
+	return loadWithViper(v, "")
+}
 
-	setDefaults()
+// LoadFrom reads configuration from a specific YAML file path.
+func LoadFrom(path string) (*AppConfig, error) {
+	v := viper.New()
+	v.SetConfigFile(path)
+	return loadWithViper(v, path)
+}
 
-	viper.SetEnvPrefix("GITLAB_AI")
-	viper.AutomaticEnv()
+func loadWithViper(v *viper.Viper, path string) (*AppConfig, error) {
+	v.SetConfigType("yaml")
 
-	if err := viper.ReadInConfig(); err != nil {
+	if path == "" {
+		v.SetConfigName("config")
+		v.AddConfigPath(".")
+		v.AddConfigPath("./configs")
+	}
+
+	setDefaultsOn(v)
+
+	v.SetEnvPrefix("GITLAB_AI")
+	v.AutomaticEnv()
+
+	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
 			return nil, fmt.Errorf("error reading config file: %w", err)
 		}
 	}
 
 	cfg := &AppConfig{}
-	if err := viper.Unmarshal(cfg); err != nil {
+	if err := v.Unmarshal(cfg, viper.DecodeHook(
+		mapstructure.ComposeDecodeHookFunc(
+			mapstructure.StringToTimeDurationHookFunc(),
+			mapstructure.StringToSliceHookFunc(","),
+			stringToTeamConfigHookFunc(),
+		),
+	)); err != nil {
 		return nil, fmt.Errorf("failed to parse configuration: %w", err)
 	}
+
+	cfg.normalizeTeams(v)
 
 	if err := cfg.EnsureOutputDirs(); err != nil {
 		return nil, fmt.Errorf("failed to create output directories: %w", err)
 	}
 
 	return cfg, nil
+}
+
+// stringToTeamConfigHookFunc allows Viper to unmarshal plain strings like
+// teams: ["vault"] into []TeamConfig by treating the string as the Name field.
+func stringToTeamConfigHookFunc() mapstructure.DecodeHookFunc {
+	return func(f reflect.Type, t reflect.Type, data interface{}) (interface{}, error) {
+		if f.Kind() != reflect.String {
+			return data, nil
+		}
+		if t != reflect.TypeOf(TeamConfig{}) {
+			return data, nil
+		}
+		return map[string]interface{}{"name": data.(string)}, nil
+	}
+}
+
+// normalizeTeams handles backward compat: if the YAML had plain strings
+// (teams: ["vault"]) Viper will fail to unmarshal them into []TeamConfig.
+// We detect that and fall back to reading the raw slice.
+func (c *AppConfig) normalizeTeams(v *viper.Viper) {
+	if len(c.Teams) > 0 && c.Teams[0].Name != "" {
+		return
+	}
+
+	raw := v.Get("teams")
+	if raw == nil {
+		return
+	}
+	items, ok := raw.([]interface{})
+	if !ok {
+		return
+	}
+
+	teams := make([]TeamConfig, 0, len(items))
+	for _, item := range items {
+		switch val := item.(type) {
+		case string:
+			teams = append(teams, TeamConfig{Name: val})
+		case map[string]interface{}:
+			tc := TeamConfig{}
+			if n, ok := val["name"].(string); ok {
+				tc.Name = n
+			}
+			if pf, ok := val["parent_folder"].(string); ok {
+				tc.ParentFolder = pf
+			}
+			if projs, ok := val["projects"].([]interface{}); ok {
+				for _, p := range projs {
+					if s, ok := p.(string); ok {
+						tc.Projects = append(tc.Projects, s)
+					}
+				}
+			}
+			if ign, ok := val["ignored_projects"].([]interface{}); ok {
+				for _, p := range ign {
+					if s, ok := p.(string); ok {
+						tc.IgnoredProjects = append(tc.IgnoredProjects, s)
+					}
+				}
+			}
+			if tc.Name != "" {
+				teams = append(teams, tc)
+			}
+		}
+	}
+	c.Teams = teams
 }
 
 // EnsureOutputDirs creates all configured output directories if they don't exist.

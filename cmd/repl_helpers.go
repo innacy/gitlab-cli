@@ -275,11 +275,10 @@ func buildReleaseMarkdown(report *models.ReleaseReport) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("# Release Items - %s\n\n", report.GeneratedAt.Format("January 02, 2006")))
 
-	if len(report.Pending) > 0 {
-		sb.WriteString(fmt.Sprintf("## Pending Master Merge (%d)\n\n", len(report.Pending)))
+	writePendingTable := func(items []models.ProjectReleaseInfo) {
 		sb.WriteString("| Project | Status | Latest Tag | Commits Ahead | Last Dev Commit |\n")
 		sb.WriteString("|---------|--------|------------|---------------|------------------|\n")
-		for _, p := range report.Pending {
+		for _, p := range items {
 			commitDate := "—"
 			if !p.LastDevCommitDate.IsZero() {
 				commitDate = p.LastDevCommitDate.Format("2006-01-02")
@@ -287,6 +286,16 @@ func buildReleaseMarkdown(report *models.ReleaseReport) string {
 			sb.WriteString(fmt.Sprintf("| %s | ***Pending Master Merge | %s | %d | %s |\n", p.Name, p.LatestTag, p.CommitsAhead, commitDate))
 		}
 		sb.WriteString("\n")
+	}
+
+	if len(report.NewPending) > 0 {
+		sb.WriteString(fmt.Sprintf("## New — Pending Master Merge (%d)\n\n", len(report.NewPending)))
+		writePendingTable(report.NewPending)
+	}
+
+	if len(report.OldPending) > 0 {
+		sb.WriteString(fmt.Sprintf("## Old — Pending Master Merge (%d)\n\n", len(report.OldPending)))
+		writePendingTable(report.OldPending)
 	}
 
 	if len(report.Released) > 0 {

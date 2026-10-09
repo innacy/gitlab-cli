@@ -96,16 +96,28 @@ issues:
     - "web_url"
 
 # Teams — GitLab group prefixes to scope the session
+# Each team can have its own parent_folder, projects, and ignored_projects.
+# teams:
+#   - name: "my-team"
+#     parent_folder: "/home/user/my-team-repos"
+#     projects:
+#       - "my-team/issues"
+#     ignored_projects:
+#       - "my-team/testcase"
+#   - name: "other-team"
+#     parent_folder: "/home/user/other-repos"
+#     projects:
+#       - "other-team/tracker"
+#
+# Flat strings still work (backward compatible):
 # teams:
 #   - "my-team"
 
-# Projects — pre-configured project paths for ticket-open
-# One entry = auto-selected, multiple = prompted to choose
+# Global fallback — used when the active team has no projects/ignored_projects set
 # projects:
 #   - "my-team/backend"
 #   - "my-team/frontend"
 
-# Ignored projects — excluded from tickets / tickets-black reports
 # ignored_projects:
 #   - "my-team/testcase"
 

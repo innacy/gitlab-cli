@@ -23,7 +23,8 @@ type ProjectReleaseInfo struct {
 }
 
 type ReleaseReport struct {
-	Pending     []ProjectReleaseInfo
+	NewPending  []ProjectReleaseInfo // last dev commit this month
+	OldPending  []ProjectReleaseInfo // last dev commit before this month
 	Released    []ProjectReleaseInfo
 	Invalid     []ProjectReleaseInfo
 	GeneratedAt time.Time

@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"gitlab-ai/pkg/output"
 	"gitlab-ai/pkg/platform"
@@ -67,7 +68,17 @@ func (r *replState) handleConfig() {
 
 	if len(r.cfg.Teams) > 0 {
 		theme.Primary.Print("  Teams:          ")
-		fmt.Println(strings.Join(r.cfg.Teams, ", "))
+		fmt.Println(strings.Join(r.cfg.TeamNames(), ", "))
+	}
+
+	if r.activeTeam != "" {
+		theme.Primary.Print("  Active Team:    ")
+		fmt.Println(r.activeTeam)
+		pf := r.cfg.ActiveParentFolder(r.activeTeam)
+		if pf != "" {
+			theme.Primary.Print("  Parent Folder:  ")
+			fmt.Println(pf)
+		}
 	}
 
 	fmt.Println()
@@ -149,6 +160,7 @@ func (r *replState) showHelp() {
 
 	printSection("Session", []helpCmd{
 		{"start", "Start session"},
+		{"switch-team", "Switch active team"},
 		{"config", "Show current configuration"},
 		{"help", "Show this help"},
 		{"exit", "End session"},
@@ -169,4 +181,78 @@ func boolStr(b bool) string {
 		return "enabled"
 	}
 	return "disabled"
+}
+
+// ─── Switch Team ─────────────────────────────────────────────────────────────
+
+func (r *replState) handleSwitchTeam() {
+	if !r.ensureSession() {
+		return
+	}
+
+	names := r.cfg.TeamNames()
+	if len(names) == 0 {
+		output.PrintWarning("No teams configured. Add teams to config.yaml.")
+		return
+	}
+	if len(names) == 1 {
+		output.PrintWarning(fmt.Sprintf("Only one team configured: %s", names[0]))
+		return
+	}
+
+	options := make([]string, 0, len(names))
+	for _, n := range names {
+		label := n
+		if n == r.activeTeam {
+			label = n + "  ← current"
+		}
+		options = append(options, label)
+	}
+
+	choice := r.promptForChoice("Switch to team", options)
+	if choice < 0 || choice >= len(names) {
+		return
+	}
+
+	target := names[choice]
+	if target == r.activeTeam {
+		output.PrintWarning(fmt.Sprintf("Already on team '%s'", target))
+		return
+	}
+
+	r.switchTeam(target)
+}
+
+func (r *replState) switchTeam(name string) {
+	prev := r.activeTeam
+	r.activeTeam = name
+
+	r.cacheMu.Lock()
+	r.projectCache = nil
+	r.lastRefreshTime = time.Time{}
+	r.cacheMu.Unlock()
+
+	r.cacheReady = make(chan struct{})
+	go r.fetchProjectCache()
+
+	s := newSpinner(fmt.Sprintf(" Switching to team '%s'...", name))
+	s.Start()
+	projects := r.waitForCache()
+	s.Stop()
+
+	output.PrintSuccess(fmt.Sprintf("Switched team: %s → %s", prev, name))
+
+	pf := r.cfg.ActiveParentFolder(name)
+	if pf != "" {
+		output.PrintSuccess(fmt.Sprintf("Parent folder: %s", pf))
+	}
+
+	if len(projects) > 0 {
+		output.PrintSuccess(fmt.Sprintf("Loaded %d projects for team '%s'", len(projects), name))
+	} else {
+		output.PrintWarning(fmt.Sprintf("No projects found for team '%s'. Loading full list in background...", name))
+	}
+
+	go r.ensureFullCache()
+	fmt.Println()
 }

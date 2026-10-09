@@ -341,8 +341,10 @@ func PrintReleaseReport(report *models.ReleaseReport) {
 	headerColor.Printf("Generated: %s\n", report.GeneratedAt.Format("2006-01-02 15:04"))
 	fmt.Println()
 
+	allPending := append(report.NewPending, report.OldPending...)
+
 	maxLen := 0
-	for _, p := range report.Pending {
+	for _, p := range allPending {
 		if len(p.Name) > maxLen {
 			maxLen = len(p.Name)
 		}
@@ -362,16 +364,16 @@ func PrintReleaseReport(report *models.ReleaseReport) {
 	}
 
 	pendingStyle := color.New(color.FgYellow, color.Bold)
+	newStyle := color.New(color.FgHiGreen, color.Bold)
 	releasedStyle := color.New(color.FgGreen)
 	invalidStyle := color.New(color.FgHiBlack)
 	sectionTitle := color.New(color.Bold)
 	dim := color.New(color.Faint)
 
-	if len(report.Pending) > 0 {
-		sectionTitle.Printf("  Pending Master Merge (%d)\n", len(report.Pending))
-		for _, p := range report.Pending {
+	printPendingList := func(items []models.ProjectReleaseInfo, style *color.Color) {
+		for _, p := range items {
 			padded := fmt.Sprintf("%-*s", maxLen, p.Name)
-			pendingStyle.Printf("    %s", padded)
+			style.Printf("    %s", padded)
 			fmt.Printf(" - ***Pending Master Merge - %s", p.LatestTag)
 			extra := fmt.Sprintf("  (%d commits ahead", p.CommitsAhead)
 			if !p.LastDevCommitDate.IsZero() {
@@ -380,6 +382,17 @@ func PrintReleaseReport(report *models.ReleaseReport) {
 			extra += ")"
 			dim.Printf("%s\n", extra)
 		}
+	}
+
+	if len(report.NewPending) > 0 {
+		sectionTitle.Printf("  New — Pending Master Merge (%d)\n", len(report.NewPending))
+		printPendingList(report.NewPending, newStyle)
+		fmt.Println()
+	}
+
+	if len(report.OldPending) > 0 {
+		sectionTitle.Printf("  Old — Pending Master Merge (%d)\n", len(report.OldPending))
+		printPendingList(report.OldPending, pendingStyle)
 		fmt.Println()
 	}
 
@@ -403,7 +416,7 @@ func PrintReleaseReport(report *models.ReleaseReport) {
 		fmt.Println()
 	}
 
-	total := len(report.Pending) + len(report.Released) + len(report.Invalid)
+	total := len(allPending) + len(report.Released) + len(report.Invalid)
 	fmt.Printf("  Total: %d projects checked\n", total)
 	fmt.Println()
 }

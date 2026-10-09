@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"strings"
 	"time"
@@ -95,10 +96,13 @@ type openAIAPIError struct {
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 const (
-	nvidiaMaxRetries    = 4
-	nvidiaBaseBackoff   = 2 * time.Second
-	nvidiaMaxBackoff    = 30 * time.Second
-	nvidiaBackoffFactor = 2.0
+	nvidiaMaxRetries       = 4
+	nvidiaMaxRetries503    = 8
+	nvidiaBaseBackoff      = 2 * time.Second
+	nvidiaBaseBackoff503   = 4 * time.Second
+	nvidiaMaxBackoff       = 30 * time.Second
+	nvidiaBackoffFactor    = 2.0
+	nvidiaJitterFraction   = 0.3
 )
 
 func isRetryableStatus(code int) bool {
@@ -106,6 +110,12 @@ func isRetryableStatus(code int) bool {
 		code == http.StatusServiceUnavailable ||
 		code == http.StatusBadGateway ||
 		code == http.StatusGatewayTimeout
+}
+
+// addJitter adds ±fraction randomness to a duration to prevent synchronized retries.
+func addJitter(d time.Duration, fraction float64) time.Duration {
+	jitter := time.Duration(float64(d) * fraction * (2*rand.Float64() - 1))
+	return d + jitter
 }
 
 // Chat sends a message with an optional system prompt and returns the text response.
@@ -138,15 +148,18 @@ func (c *NvidiaClient) Chat(ctx context.Context, systemPrompt, userMessage strin
 		return ChatResult{}, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	var lastErr error
+	maxRetries := nvidiaMaxRetries
 	backoff := nvidiaBaseBackoff
+	var lastErr error
+	var lastStatus int
 
-	for attempt := 0; attempt <= nvidiaMaxRetries; attempt++ {
+	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if attempt > 0 {
+			wait := addJitter(backoff, nvidiaJitterFraction)
 			select {
 			case <-ctx.Done():
 				return ChatResult{}, fmt.Errorf("request cancelled during retry backoff: %w", ctx.Err())
-			case <-time.After(backoff):
+			case <-time.After(wait):
 			}
 			backoff = time.Duration(float64(backoff) * nvidiaBackoffFactor)
 			if backoff > nvidiaMaxBackoff {
@@ -181,6 +194,13 @@ func (c *NvidiaClient) Chat(ctx context.Context, systemPrompt, userMessage strin
 			} else {
 				lastErr = fmt.Errorf("NVIDIA API error (%d): %s", resp.StatusCode, string(respBody))
 			}
+
+			// On first 503, escalate to longer retry budget and slower backoff.
+			if resp.StatusCode == http.StatusServiceUnavailable && lastStatus != http.StatusServiceUnavailable {
+				maxRetries = nvidiaMaxRetries503
+				backoff = nvidiaBaseBackoff503
+			}
+			lastStatus = resp.StatusCode
 			continue
 		}
 
@@ -214,5 +234,5 @@ func (c *NvidiaClient) Chat(ctx context.Context, systemPrompt, userMessage strin
 		return ChatResult{Text: text, Model: c.model, DurationMs: time.Since(start).Milliseconds()}, nil
 	}
 
-	return ChatResult{}, fmt.Errorf("NVIDIA API exhausted %d retries: %w", nvidiaMaxRetries, lastErr)
+	return ChatResult{}, fmt.Errorf("NVIDIA API exhausted %d retries: %w", maxRetries, lastErr)
 }
