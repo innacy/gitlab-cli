@@ -365,7 +365,6 @@ func (r *replState) shipProcessFolder(folder string, ticketIID int, ticketURL st
 	}
 	s.Stop()
 
-	fmt.Println()
 	s = newSpinner(" Generating MR description with AI...")
 	s.Start()
 	mrDesc, _, descErr := r.generateMRDescription(projectPath, branchName, targetBranch)
