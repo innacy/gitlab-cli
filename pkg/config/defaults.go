@@ -2,10 +2,6 @@ package config
 
 import "github.com/spf13/viper"
 
-func setDefaults() {
-	setDefaultsOn(viper.GetViper())
-}
-
 func setDefaultsOn(v *viper.Viper) {
 	v.SetDefault("platform", "gitlab")
 
@@ -31,16 +27,16 @@ func setDefaultsOn(v *viper.Viper) {
 	v.SetDefault("ai.nvidia.enable_thinking", false)
 	v.SetDefault("ai.nvidia.reasoning_budget", 16384)
 
-	v.SetDefault("review.output.directory", "./reviews")
-	v.SetDefault("review.output.filename_pattern", "{project}_{mr_number}.md")
+	v.SetDefault("review.output.directory", "./.data")
+	v.SetDefault("review.output.filename_pattern", "{project}_mr_review_{mr_number}.md")
 	v.SetDefault("review.output.include_metadata", true)
 	v.SetDefault("review.output.include_diff", false)
 	v.SetDefault("review.filters.exclude_files", []string{"*.lock", "vendor/*", "*.generated.go"})
 
-	v.SetDefault("issues.output.directory", "./tickets")
+	v.SetDefault("issues.output.directory", "./.data")
 	v.SetDefault("issues.output.filename_pattern", "{project}_issues_{date}.md")
 
-	v.SetDefault("other.directory", "./zzz-Mds")
+	v.SetDefault("other.directory", "./.data")
 
 	v.SetDefault("merge.squash", false)
 	v.SetDefault("merge.remove_source_branch", true)

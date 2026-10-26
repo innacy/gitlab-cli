@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/briandowns/spinner"
-
 	"gitlab-ai/pkg/ai"
 	"gitlab-ai/pkg/output"
 )
@@ -51,8 +49,7 @@ func (r *replState) handlePipelineTriage(args []string) {
 		}
 		pipelineID = n
 	} else {
-		s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-		s.Suffix = " Finding latest failed pipeline..."
+		s := output.NewLoader(" Finding latest failed pipeline...")
 		s.Start()
 
 		pipelines, err := r.provider.CI().ListPipelines(project, 10)
@@ -88,8 +85,7 @@ func (r *replState) handlePipelineTriage(args []string) {
 		}
 	}
 
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = fmt.Sprintf(" Fetching pipeline #%d jobs...", pipelineID)
+	s := output.NewLoader(fmt.Sprintf(" Fetching pipeline #%d jobs...", pipelineID))
 	s.Start()
 
 	pipeline, err := r.provider.CI().GetPipeline(project, pipelineID)
@@ -127,8 +123,7 @@ func (r *replState) handlePipelineTriage(args []string) {
 
 	var triageResults []string
 	for _, job := range failedJobs {
-		s = spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-		s.Suffix = fmt.Sprintf(" Analyzing failed job '%s' (#%d)...", job.name, job.id)
+		s = output.NewLoader(fmt.Sprintf(" Analyzing failed job '%s' (#%d)...", job.name, job.id))
 		s.Start()
 
 		log, logErr := r.provider.CI().GetJobLog(project, job.id)
@@ -166,8 +161,7 @@ func (r *replState) handlePipelineTriage(args []string) {
 	fmt.Println()
 
 	if r.promptForYesNo("Retry the failed pipeline?") {
-		rs := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-		rs.Suffix = fmt.Sprintf(" Retrying pipeline #%d...", pipelineID)
+		rs := output.NewLoader(fmt.Sprintf(" Retrying pipeline #%d...", pipelineID))
 		rs.Start()
 		pl, retryErr := r.provider.CI().RetryPipeline(project, pipelineID)
 		rs.Stop()

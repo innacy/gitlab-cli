@@ -188,12 +188,7 @@ func (r *replState) recentProjects(n int) []models.ProjectInfo {
 }
 
 func (r *replState) promptForProject(title string) string {
-	if r.cacheReady != nil {
-		select {
-		case <-r.cacheReady:
-		case <-time.After(3 * time.Second):
-		}
-	}
+	r.waitCacheReady(3 * time.Second)
 
 	r.smartRefresh()
 

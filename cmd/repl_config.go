@@ -232,13 +232,7 @@ func (r *replState) switchTeam(name string) {
 	r.lastRefreshTime = time.Time{}
 	r.cacheMu.Unlock()
 
-	r.cacheReady = make(chan struct{})
-	go r.fetchProjectCache()
-
-	s := newSpinner(fmt.Sprintf(" Switching to team '%s'...", name))
-	s.Start()
-	projects := r.waitForCache()
-	s.Stop()
+	r.startCacheLoad()
 
 	output.PrintSuccess(fmt.Sprintf("Switched team: %s → %s", prev, name))
 
@@ -246,13 +240,5 @@ func (r *replState) switchTeam(name string) {
 	if pf != "" {
 		output.PrintSuccess(fmt.Sprintf("Parent folder: %s", pf))
 	}
-
-	if len(projects) > 0 {
-		output.PrintSuccess(fmt.Sprintf("Loaded %d projects for team '%s'", len(projects), name))
-	} else {
-		output.PrintWarning(fmt.Sprintf("No projects found for team '%s'. Loading full list in background...", name))
-	}
-
-	go r.ensureFullCache()
 	fmt.Println()
 }

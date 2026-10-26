@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/briandowns/spinner"
-
 	"gitlab-ai/internal/models"
 	"gitlab-ai/pkg/ai"
 	"gitlab-ai/pkg/output"
@@ -199,8 +197,7 @@ func (r *replState) ticketFromBranchContext(project string) (string, string) {
 		return "", ""
 	}
 
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = " Fetching branch diff for ticket context..."
+	s := output.NewLoader(" Fetching branch diff for ticket context...")
 	s.Start()
 
 	commits, err := r.provider.MRs().GetBranchDiff(project, baseBranch, sourceBranch)
@@ -239,8 +236,7 @@ func (r *replState) ticketFromBranchContext(project string) (string, string) {
 		return title, branchContext
 	}
 
-	s = spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = " Generating ticket from branch context..."
+	s = output.NewLoader(" Generating ticket from branch context...")
 	s.Start()
 
 	title, description, aiErr := r.enhanceTicketDescription(branchContext)
@@ -335,8 +331,7 @@ func (r *replState) handleChat(input string) {
 		return
 	}
 
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = " Thinking..."
+	s := output.NewLoader(" Thinking...")
 	s.Start()
 
 	response, err := r.askAI(input)
