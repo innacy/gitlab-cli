@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/briandowns/spinner"
-
 	"gitlab-ai/internal/models"
 	"gitlab-ai/pkg/audit"
 	projectctx "gitlab-ai/pkg/context"
@@ -59,8 +57,7 @@ func (r *replState) handleMRReview(args []string) {
 		}
 		mrNumber = n
 	} else {
-		s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-		s.Suffix = fmt.Sprintf(" Fetching open MRs from '%s'...", project)
+		s := output.NewLoader(fmt.Sprintf(" Fetching open MRs from '%s'...", project))
 		s.Start()
 
 		openMRs, err := r.provider.MRs().ListProjectMRs(project, "opened", 5)
@@ -88,8 +85,7 @@ func (r *replState) handleMRReview(args []string) {
 		mrNumber = openMRs[choice].IID
 	}
 
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = fmt.Sprintf(" Fetching MR #%d from '%s'...", mrNumber, project)
+	s := output.NewLoader(fmt.Sprintf(" Fetching MR #%d from '%s'...", mrNumber, project))
 	s.Start()
 
 	mrInfo, err := r.provider.MRs().GetMergeRequest(project, mrNumber)
@@ -112,7 +108,7 @@ func (r *replState) handleMRReview(args []string) {
 		return
 	}
 
-	s = spinner.New(spinner.CharSets[14], 100*time.Millisecond)
+	s = output.NewLoader("")
 	suffix := fmt.Sprintf(" Generating AI review via %s", r.aiClient.ProviderName())
 	if projContext != "" {
 		suffix += " (with project context)"
@@ -274,8 +270,7 @@ func (r *replState) postReviewComment(project string, mrNumber int) {
 		return
 	}
 
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = fmt.Sprintf(" Posting review to MR #%d...", mrNumber)
+	s := output.NewLoader(fmt.Sprintf(" Posting review to MR #%d...", mrNumber))
 	s.Start()
 
 	noteURL, err := r.provider.MRs().PostMRComment(project, mrNumber, entry.comment)
@@ -313,8 +308,7 @@ func (r *replState) handleMRStatus(args []string) {
 
 	project = r.resolveProject(project)
 
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = fmt.Sprintf(" Fetching MRs from '%s'...", project)
+	s := output.NewLoader(fmt.Sprintf(" Fetching MRs from '%s'...", project))
 	s.Start()
 
 	openMRs, err := r.provider.MRs().ListProjectMRs(project, "opened", 20)
@@ -384,8 +378,7 @@ func (r *replState) handleMRChecks(args []string) {
 		}
 	}
 
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = fmt.Sprintf(" Fetching pipeline for MR #%d...", mrNumber)
+	s := output.NewLoader(fmt.Sprintf(" Fetching pipeline for MR #%d...", mrNumber))
 	s.Start()
 
 	pipeline, err := r.provider.MRs().GetMRPipeline(project, mrNumber)
@@ -429,8 +422,7 @@ func (r *replState) handleMROpen(args []string) {
 	project = r.resolveProject(project)
 
 	if sourceBranch == "" {
-		s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-		s.Suffix = fmt.Sprintf(" Fetching branches from '%s'...", project)
+		s := output.NewLoader(fmt.Sprintf(" Fetching branches from '%s'...", project))
 		s.Start()
 
 		branches, err := r.provider.Repos().ListActiveBranches(project, 5)
@@ -472,8 +464,7 @@ func (r *replState) handleMROpen(args []string) {
 	}
 
 	fmt.Println()
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = " Generating MR description..."
+	s := output.NewLoader(" Generating MR description...")
 	s.Start()
 
 	description, _, err := r.generateMRDescription(project, sourceBranch, targetBranch)
@@ -488,8 +479,7 @@ func (r *replState) handleMROpen(args []string) {
 		description += fmt.Sprintf("\n\nCloses #%d", ticketNumber)
 	}
 
-	s = spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = fmt.Sprintf(" Creating MR: %s → %s...", sourceBranch, targetBranch)
+	s = output.NewLoader(fmt.Sprintf(" Creating MR: %s → %s...", sourceBranch, targetBranch))
 	s.Start()
 
 	mr, err := r.provider.MRs().CreateMergeRequest(project, sourceBranch, targetBranch, title, description)
@@ -531,7 +521,7 @@ func (r *replState) handleMRMerge(args []string) {
 		output.PrintSuccess(fmt.Sprintf("Using merge defaults: squash=%v, remove_source=%v", squash, removeSource))
 	}
 
-	s := newSpinner(fmt.Sprintf(" Merging MR #%d...", mrNumber))
+	s := output.NewLoader(fmt.Sprintf(" Merging MR #%d...", mrNumber))
 	s.Start()
 	err := r.provider.MRs().MergeMR(project, mrNumber, platform.MergeOptions{
 		Squash:             squash,
@@ -559,7 +549,7 @@ func (r *replState) handleMRApprove(args []string) {
 		return
 	}
 
-	s := newSpinner(fmt.Sprintf(" Approving MR #%d...", mrNumber))
+	s := output.NewLoader(fmt.Sprintf(" Approving MR #%d...", mrNumber))
 	s.Start()
 	err := r.provider.MRs().ApproveMR(project, mrNumber)
 	s.Stop()
@@ -581,7 +571,7 @@ func (r *replState) handleMRUnapprove(args []string) {
 		return
 	}
 
-	s := newSpinner(fmt.Sprintf(" Removing approval from MR #%d...", mrNumber))
+	s := output.NewLoader(fmt.Sprintf(" Removing approval from MR #%d...", mrNumber))
 	s.Start()
 	err := r.provider.MRs().UnapproveMR(project, mrNumber)
 	s.Stop()
@@ -605,7 +595,7 @@ func (r *replState) handleMRRebase(args []string) {
 		return
 	}
 
-	s := newSpinner(fmt.Sprintf(" Rebasing MR #%d...", mrNumber))
+	s := output.NewLoader(fmt.Sprintf(" Rebasing MR #%d...", mrNumber))
 	s.Start()
 	err := r.provider.MRs().RebaseMR(project, mrNumber)
 	s.Stop()
@@ -676,7 +666,7 @@ func (r *replState) handleMRUpdate(args []string) {
 		return
 	}
 
-	s := newSpinner(fmt.Sprintf(" Generating title & description via %s...", r.aiClient.ProviderName()))
+	s := output.NewLoader(fmt.Sprintf(" Generating title & description via %s...", r.aiClient.ProviderName()))
 	s.Start()
 	desc, _, genErr := r.generateMRDescription(project, mrInfo.SourceBranch, mrInfo.TargetBranch)
 	s.Stop()
@@ -702,7 +692,7 @@ func (r *replState) handleMRUpdate(args []string) {
 	opts.Title = &title
 	opts.Description = &desc
 
-	s = newSpinner(fmt.Sprintf(" Updating MR #%d...", mrNumber))
+	s = output.NewLoader(fmt.Sprintf(" Updating MR #%d...", mrNumber))
 	s.Start()
 	mr, err := r.provider.MRs().UpdateMR(project, mrNumber, opts)
 	s.Stop()
@@ -727,7 +717,7 @@ func (r *replState) handleMRClose(args []string) {
 		return
 	}
 
-	s := newSpinner(fmt.Sprintf(" Closing MR #%d...", mrNumber))
+	s := output.NewLoader(fmt.Sprintf(" Closing MR #%d...", mrNumber))
 	s.Start()
 	err := r.provider.MRs().CloseMR(project, mrNumber)
 	s.Stop()
@@ -749,7 +739,7 @@ func (r *replState) handleMRReopen(args []string) {
 		return
 	}
 
-	s := newSpinner(fmt.Sprintf(" Reopening MR #%d...", mrNumber))
+	s := output.NewLoader(fmt.Sprintf(" Reopening MR #%d...", mrNumber))
 	s.Start()
 	err := r.provider.MRs().ReopenMR(project, mrNumber)
 	s.Stop()
@@ -811,8 +801,7 @@ func (r *replState) parseMRArgs(args []string) (string, int) {
 // pickMR fetches the latest open MRs for a project and lets the user choose
 // one from the list, with a manual-entry fallback.
 func (r *replState) pickMR(project, title string) int {
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = " Fetching open MRs..."
+	s := output.NewLoader(" Fetching open MRs...")
 	s.Start()
 
 	openMRs, err := r.provider.MRs().ListProjectMRs(project, "opened", 5)

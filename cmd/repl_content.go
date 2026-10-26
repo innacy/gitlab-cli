@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/briandowns/spinner"
-
 	"gitlab-ai/internal/models"
 	"gitlab-ai/pkg/ai"
 	"gitlab-ai/pkg/audit"
@@ -55,8 +53,7 @@ func (r *replState) handleCreateTicketContent(args []string) {
 	// Skip go.mod/go.sum (handled by prompt rule) and deleted files.
 	fileContents := r.fetchFileContextForDiff(project, sourceBranch, diff)
 
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = " Generating ticket content with AI..."
+	s := output.NewLoader(" Generating ticket content with AI...")
 	s.Start()
 
 	template := r.cfg.TicketContent.Template
@@ -127,8 +124,7 @@ func (r *replState) ticketPostAction(project, title, description string, auditEv
 }
 
 func (r *replState) createNewTicket(project, title, description string) {
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = fmt.Sprintf(" Creating ticket in '%s'...", project)
+	s := output.NewLoader(fmt.Sprintf(" Creating ticket in '%s'...", project))
 	s.Start()
 	issue, err := r.provider.Issues().CreateIssue(project, title, description, nil)
 	s.Stop()
@@ -151,8 +147,7 @@ func (r *replState) updateExistingTicket(project, description string) {
 		return
 	}
 
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = fmt.Sprintf(" Updating ticket #%d...", issueIID)
+	s := output.NewLoader(fmt.Sprintf(" Updating ticket #%d...", issueIID))
 	s.Start()
 	updated, err := r.provider.Issues().UpdateIssue(project, issueIID, platform.UpdateIssueOptions{
 		Description: &description,
@@ -197,8 +192,7 @@ func (r *replState) fetchFileContextForDiff(project, ref string, diff *models.Di
 		return nil
 	}
 
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = fmt.Sprintf(" Reading %d file(s) for context...", len(filesToFetch))
+	s := output.NewLoader(fmt.Sprintf(" Reading %d file(s) for context...", len(filesToFetch)))
 	s.Start()
 	defer s.Stop()
 
@@ -239,8 +233,7 @@ func (r *replState) handleTicketDescribe(args []string) {
 	}
 
 	// Step 2: Fetch MRs linked to this ticket
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = fmt.Sprintf(" Fetching MRs linked to #%d...", issueIID)
+	s := output.NewLoader(fmt.Sprintf(" Fetching MRs linked to #%d...", issueIID))
 	s.Start()
 	linkedMRs, err := r.provider.Issues().ListRelatedMergeRequests(project, issueIID)
 	s.Stop()
@@ -261,8 +254,7 @@ func (r *replState) handleTicketDescribe(args []string) {
 	fmt.Println()
 
 	// Step 3: Collect diffs from all linked MRs
-	s = spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = " Fetching diffs from linked MRs..."
+	s = output.NewLoader(" Fetching diffs from linked MRs...")
 	s.Start()
 
 	var entries []ai.MRDiffEntry
@@ -308,8 +300,7 @@ func (r *replState) handleTicketDescribe(args []string) {
 		return
 	}
 
-	s = spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = " Generating ticket description from linked MRs..."
+	s = output.NewLoader(" Generating ticket description from linked MRs...")
 	s.Start()
 
 	template := r.cfg.TicketContent.Template
@@ -330,8 +321,7 @@ func (r *replState) handleTicketDescribe(args []string) {
 
 	fmt.Println()
 
-	s = spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = fmt.Sprintf(" Updating ticket #%d...", issueIID)
+	s = output.NewLoader(fmt.Sprintf(" Updating ticket #%d...", issueIID))
 	s.Start()
 	updated, err := r.provider.Issues().UpdateIssue(project, issueIID, platform.UpdateIssueOptions{
 		Title:       &title,
@@ -351,8 +341,7 @@ func (r *replState) handleTicketDescribe(args []string) {
 
 // pickTicket shows latest 5 tickets + manual entry option. Returns issue IID or 0 on cancel.
 func (r *replState) pickTicket(project, title string) int {
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = " Fetching latest tickets..."
+	s := output.NewLoader(" Fetching latest tickets...")
 	s.Start()
 
 	result, err := r.provider.Issues().ListProjectIssues(project, models.IssueFilter{
@@ -423,8 +412,7 @@ func (r *replState) handleCreateEpicContent(args []string) {
 		return
 	}
 
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = " Generating epic content with AI..."
+	s := output.NewLoader(" Generating epic content with AI...")
 	s.Start()
 
 	template := r.cfg.EpicContent.Template
@@ -477,8 +465,7 @@ func (r *replState) handleCreateEpicContent(args []string) {
 			return
 		}
 
-		s = spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-		s.Suffix = fmt.Sprintf(" Creating epic in group '%s'...", groupPath)
+		s = output.NewLoader(fmt.Sprintf(" Creating epic in group '%s'...", groupPath))
 		s.Start()
 		epic, err := r.provider.Epics().CreateGroupEpic(groupPath, title, description)
 		s.Stop()
@@ -500,8 +487,7 @@ func (r *replState) handleCreateEpicContent(args []string) {
 // ─── Shared Helpers ──────────────────────────────────────────────────────────
 
 func (r *replState) promptForBranchPair(project string) (sourceBranch, baseBranch string) {
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = fmt.Sprintf(" Fetching branches from '%s'...", project)
+	s := output.NewLoader(fmt.Sprintf(" Fetching branches from '%s'...", project))
 	s.Start()
 
 	branches, err := r.provider.Repos().ListActiveBranches(project, 10)
@@ -542,8 +528,7 @@ func (r *replState) promptForBranchPair(project string) (sourceBranch, baseBranc
 // This ensures diffs work even when the source branch has been deleted after merge.
 // Falls back to branch compare if no MR exists.
 func (r *replState) fetchDiff(project, baseBranch, sourceBranch string) (*models.DiffResult, error) {
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = fmt.Sprintf(" Fetching diff %s..%s from '%s'...", baseBranch, sourceBranch, project)
+	s := output.NewLoader(fmt.Sprintf(" Fetching diff %s..%s from '%s'...", baseBranch, sourceBranch, project))
 	s.Start()
 
 	var diff *models.DiffResult

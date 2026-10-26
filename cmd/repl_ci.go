@@ -4,9 +4,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
-
-	"github.com/briandowns/spinner"
 
 	"gitlab-ai/pkg/output"
 )
@@ -31,8 +28,7 @@ func (r *replState) handlePipeline(args []string) {
 	}
 	project = r.resolveProject(project)
 
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = fmt.Sprintf(" Fetching pipelines from '%s'...", project)
+	s := output.NewLoader(fmt.Sprintf(" Fetching pipelines from '%s'...", project))
 	s.Start()
 
 	pipelines, err := r.provider.CI().ListPipelines(project, 15)
@@ -99,8 +95,7 @@ func (r *replState) handlePipelineView(args []string) {
 		}
 	}
 
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = fmt.Sprintf(" Fetching pipeline #%d...", pipelineID)
+	s := output.NewLoader(fmt.Sprintf(" Fetching pipeline #%d...", pipelineID))
 	s.Start()
 
 	pipeline, err := r.provider.CI().GetPipeline(project, pipelineID)
@@ -161,8 +156,7 @@ func (r *replState) handlePipelineLogs(args []string) {
 		}
 	}
 
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = fmt.Sprintf(" Fetching logs for job #%d...", jobID)
+	s := output.NewLoader(fmt.Sprintf(" Fetching logs for job #%d...", jobID))
 	s.Start()
 
 	log, err := r.provider.CI().GetJobLog(project, jobID)
@@ -231,8 +225,7 @@ func (r *replState) handlePipelineRetry(args []string) {
 		}
 	}
 
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = fmt.Sprintf(" Retrying pipeline #%d...", pipelineID)
+	s := output.NewLoader(fmt.Sprintf(" Retrying pipeline #%d...", pipelineID))
 	s.Start()
 
 	pl, err := r.provider.CI().RetryPipeline(project, pipelineID)
@@ -297,8 +290,7 @@ func (r *replState) handlePipelineCancel(args []string) {
 		}
 	}
 
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = fmt.Sprintf(" Cancelling pipeline #%d...", pipelineID)
+	s := output.NewLoader(fmt.Sprintf(" Cancelling pipeline #%d...", pipelineID))
 	s.Start()
 
 	pl, err := r.provider.CI().CancelPipeline(project, pipelineID)

@@ -47,7 +47,7 @@ func (r *replState) handleTicketOpenEmpty(args []string) {
 }
 
 func (r *replState) createEmptyTicket(project string) (*models.Issue, error) {
-	s := newSpinner(fmt.Sprintf(" Creating empty ticket in '%s'...", project))
+	s := output.NewLoader(fmt.Sprintf(" Creating empty ticket in '%s'...", project))
 	s.Start()
 	issue, err := r.provider.Issues().CreateIssue(project, "cnips work", "", nil)
 	s.Stop()
@@ -56,7 +56,7 @@ func (r *replState) createEmptyTicket(project string) (*models.Issue, error) {
 	}
 
 	userID := r.provider.UserID()
-	s = newSpinner(fmt.Sprintf(" Assigning to @%s...", r.provider.Username()))
+	s = output.NewLoader(fmt.Sprintf(" Assigning to @%s...", r.provider.Username()))
 	s.Start()
 	updated, err := r.provider.Issues().UpdateIssue(project, issue.IID, platform.UpdateIssueOptions{
 		AssigneeID: &userID,
@@ -214,7 +214,7 @@ func (r *replState) shipSelectFolders() []string {
 		modTime time.Time
 	}
 
-	s := newSpinner(" Scanning folders for local changes...")
+	s := output.NewLoader(" Scanning folders for local changes...")
 	s.Start()
 
 	var folders []folderEntry
@@ -277,7 +277,7 @@ func (r *replState) shipProcessFolder(folder string, ticketIID int, ticketURL st
 		return "", false
 	}
 
-	s := newSpinner(" Checking local changes...")
+	s := output.NewLoader(" Checking local changes...")
 	s.Start()
 	statusOut, err := runGitCmd(folder, "status", "--porcelain")
 	s.Stop()
@@ -302,7 +302,7 @@ func (r *replState) shipProcessFolder(folder string, ticketIID int, ticketURL st
 	}
 	output.PrintSuccess(fmt.Sprintf("On branch: %s", branchName))
 
-	s = newSpinner(" Staging changes...")
+	s = output.NewLoader(" Staging changes...")
 	s.Start()
 	_, err = runGitCmd(folder, "add", ".")
 	s.Stop()
@@ -311,12 +311,12 @@ func (r *replState) shipProcessFolder(folder string, ticketIID int, ticketURL st
 		return "", false
 	}
 
-	s = newSpinner(" Generating commit message...")
+	s = output.NewLoader(" Generating commit message...")
 	s.Start()
 	commitMsg := r.generateShortCommitMsg(folder, ticketURL)
 	s.Stop()
 
-	s = newSpinner(" Committing changes...")
+	s = output.NewLoader(" Committing changes...")
 	s.Start()
 	_, err = runGitCmd(folder, "commit", "-m", commitMsg)
 	s.Stop()
@@ -326,7 +326,7 @@ func (r *replState) shipProcessFolder(folder string, ticketIID int, ticketURL st
 	}
 	output.PrintSuccess(fmt.Sprintf("Committed: %s", commitMsg))
 
-	s = newSpinner(fmt.Sprintf(" Pushing '%s'...", branchName))
+	s = output.NewLoader(fmt.Sprintf(" Pushing '%s'...", branchName))
 	s.Start()
 	pushOut, err := runGitCmd(folder, "push", "-u", "origin", branchName)
 	s.Stop()
@@ -336,7 +336,7 @@ func (r *replState) shipProcessFolder(folder string, ticketIID int, ticketURL st
 	}
 	output.PrintSuccess("Pushed successfully")
 
-	s = newSpinner(" Resolving GitLab project...")
+	s = output.NewLoader(" Resolving GitLab project...")
 	s.Start()
 	projectPath := r.resolveProject(folderName)
 	if projectPath == folderName {
@@ -357,7 +357,7 @@ func (r *replState) shipProcessFolder(folder string, ticketIID int, ticketURL st
 		targetBranch = detectTargetBranch(folder)
 	}
 
-	s = newSpinner(" Fetching branch info...")
+	s = output.NewLoader(" Fetching branch info...")
 	s.Start()
 	mrTitle := branchToMRTitle(branchName)
 	if bInfo, bErr := r.provider.Repos().GetBranch(projectPath, branchName); bErr == nil && bInfo.CommitTitle != "" {
@@ -365,7 +365,7 @@ func (r *replState) shipProcessFolder(folder string, ticketIID int, ticketURL st
 	}
 	s.Stop()
 
-	s = newSpinner(" Generating MR description with AI...")
+	s = output.NewLoader(" Generating MR description with AI...")
 	s.Start()
 	mrDesc, _, descErr := r.generateMRDescription(projectPath, branchName, targetBranch)
 	s.Stop()
@@ -375,7 +375,7 @@ func (r *replState) shipProcessFolder(folder string, ticketIID int, ticketURL st
 	}
 	mrDesc = fmt.Sprintf("Relates to %s\n\n%s", ticketURL, mrDesc)
 
-	s = newSpinner(fmt.Sprintf(" Creating MR: %s → %s in '%s'...", branchName, targetBranch, projectPath))
+	s = output.NewLoader(fmt.Sprintf(" Creating MR: %s → %s in '%s'...", branchName, targetBranch, projectPath))
 	s.Start()
 	mr, err := r.provider.MRs().CreateMergeRequest(projectPath, branchName, targetBranch, mrTitle, mrDesc)
 	s.Stop()
@@ -464,7 +464,7 @@ Diff:
 func (r *replState) checkoutShipBranch(folder string, ticketIID int) (string, error) {
 	branchName := fmt.Sprintf("fix/%d", ticketIID)
 
-	s := newSpinner(fmt.Sprintf(" Switching to branch '%s'...", branchName))
+	s := output.NewLoader(fmt.Sprintf(" Switching to branch '%s'...", branchName))
 	s.Start()
 	_, err := runGitCmd(folder, "checkout", "-B", branchName)
 	s.Stop()
@@ -474,7 +474,7 @@ func (r *replState) checkoutShipBranch(folder string, ticketIID int) (string, er
 	output.PrintWarning(fmt.Sprintf("Branch '%s' failed: %v — trying fallback...", branchName, err))
 
 	branchName = fmt.Sprintf("fix/%d-v1", ticketIID)
-	s = newSpinner(fmt.Sprintf(" Switching to branch '%s'...", branchName))
+	s = output.NewLoader(fmt.Sprintf(" Switching to branch '%s'...", branchName))
 	s.Start()
 	_, err = runGitCmd(folder, "checkout", "-B", branchName)
 	s.Stop()
@@ -489,7 +489,7 @@ func (r *replState) shipUpdateTicketDesc(project string, ticketIID int) {
 	const maxRetries = 5
 	const retryDelay = 3 * time.Second
 
-	s := newSpinner(fmt.Sprintf(" Waiting for GitLab to link MRs to #%d...", ticketIID))
+	s := output.NewLoader(fmt.Sprintf(" Waiting for GitLab to link MRs to #%d...", ticketIID))
 	s.Start()
 
 	var linkedMRs []models.MRListItem
@@ -522,7 +522,7 @@ func (r *replState) shipUpdateTicketDesc(project string, ticketIID int) {
 	}
 	fmt.Println()
 
-	s = newSpinner(" Fetching diffs from linked MRs...")
+	s = output.NewLoader(" Fetching diffs from linked MRs...")
 	s.Start()
 
 	var entries []ai.MRDiffEntry
@@ -573,7 +573,7 @@ func (r *replState) shipUpdateTicketDesc(project string, ticketIID int) {
 		return
 	}
 
-	s = newSpinner(" Generating ticket description from linked MRs...")
+	s = output.NewLoader(" Generating ticket description from linked MRs...")
 	s.Start()
 
 	template := r.cfg.TicketContent.Template
@@ -592,7 +592,7 @@ func (r *replState) shipUpdateTicketDesc(project string, ticketIID int) {
 
 	title, description := parseContentResponse(response)
 
-	s = newSpinner(fmt.Sprintf(" Updating ticket #%d...", ticketIID))
+	s = output.NewLoader(fmt.Sprintf(" Updating ticket #%d...", ticketIID))
 	s.Start()
 	updated, err := r.provider.Issues().UpdateIssue(project, ticketIID, platform.UpdateIssueOptions{
 		Title:       &title,

@@ -9,7 +9,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/briandowns/spinner"
 	"github.com/chzyer/readline"
 	"github.com/fatih/color"
 
@@ -41,6 +40,7 @@ type replState struct {
 	projectCache    []models.ProjectInfo
 	cacheMu         sync.RWMutex
 	cacheReady      chan struct{}
+	fullCacheMu     sync.Mutex
 	lastRefreshTime time.Time
 
 	idleTimer *time.Timer
@@ -143,13 +143,28 @@ func (r *replState) projectSuggestions() []string {
 
 // ─── Project Cache ───────────────────────────────────────────────────────────
 
-func (r *replState) waitForCache() []models.ProjectInfo {
-	if r.cacheReady != nil {
-		select {
-		case <-r.cacheReady:
-		case <-time.After(30 * time.Second):
-		}
+// waitCacheReady blocks until the startup fetch finishes, showing a loader
+// only if the cache isn't ready yet.
+func (r *replState) waitCacheReady(timeout time.Duration) {
+	if r.cacheReady == nil {
+		return
 	}
+	select {
+	case <-r.cacheReady:
+		return
+	default:
+	}
+	s := output.NewLoader(" Loading projects...")
+	s.Start()
+	defer s.Stop()
+	select {
+	case <-r.cacheReady:
+	case <-time.After(timeout):
+	}
+}
+
+func (r *replState) waitForCache() []models.ProjectInfo {
+	r.waitCacheReady(30 * time.Second)
 	r.cacheMu.RLock()
 	defer r.cacheMu.RUnlock()
 	result := make([]models.ProjectInfo, len(r.projectCache))
@@ -237,7 +252,13 @@ func (r *replState) refreshCacheAsync() {
 	go r.refreshCache()
 }
 
-func (r *replState) ensureFullCache() []models.ProjectInfo {
+// loadFullCache upgrades the startup cache to the full project list. It prints
+// nothing, so it is safe to run in the background; fullCacheMu makes a
+// foreground caller wait for an in-flight background load instead of refetching.
+func (r *replState) loadFullCache() {
+	r.fullCacheMu.Lock()
+	defer r.fullCacheMu.Unlock()
+
 	if r.cacheReady != nil {
 		select {
 		case <-r.cacheReady:
@@ -253,6 +274,13 @@ func (r *replState) ensureFullCache() []models.ProjectInfo {
 		r.lastRefreshTime = time.Time{}
 		r.refreshCacheWithLimit(0)
 	}
+}
+
+func (r *replState) ensureFullCache() []models.ProjectInfo {
+	s := output.NewLoader(" Loading projects...")
+	s.Start()
+	r.loadFullCache()
+	s.Stop()
 
 	r.cacheMu.RLock()
 	defer r.cacheMu.RUnlock()
@@ -262,7 +290,7 @@ func (r *replState) ensureFullCache() []models.ProjectInfo {
 }
 
 func (r *replState) syncProjectCache() {
-	s := newSpinner(" Syncing projects...")
+	s := output.NewLoader(" Syncing projects...")
 	s.Start()
 	r.refreshCache()
 	s.Stop()
@@ -514,6 +542,7 @@ func (r *replState) dispatch(line string) bool {
 
 	cmd := strings.ToLower(parts[0])
 	start := time.Now()
+	output.TakeWorkTime()
 
 	switch cmd {
 	case "start":
@@ -613,6 +642,11 @@ func (r *replState) dispatch(line string) bool {
 		r.handleIntentOrChat(line)
 	}
 
+	// ponytail: counts loader time only, so prompts the user answers don't inflate it.
+	if d := output.TakeWorkTime(); d >= time.Second {
+		output.PrintWorked(d)
+	}
+
 	if r.auditor != nil {
 		if category, ok := significantCommands[cmd]; ok {
 			project := ""
@@ -646,7 +680,7 @@ func (r *replState) ensureSession() bool {
 		platformName = "gitlab"
 	}
 
-	s := newSpinner(fmt.Sprintf(" Authenticating with %s...", platformName))
+	s := output.NewLoader(fmt.Sprintf(" Authenticating with %s...", platformName))
 	s.Start()
 
 	prov, err := platform.NewProvider(r.cfg)
@@ -677,8 +711,7 @@ func (r *replState) ensureSession() bool {
 		}
 	}
 
-	r.cacheReady = make(chan struct{})
-	go r.fetchProjectCache()
+	r.startCacheLoad()
 
 	output.PrintSuccess("Session started — ready for commands")
 	fmt.Println()
@@ -691,23 +724,17 @@ func (r *replState) handleStart() {
 		output.PrintWarning("Session already active. Use 'exit' to end current session.")
 		return
 	}
-	if !r.ensureSession() {
-		return
-	}
+	r.ensureSession()
+}
 
-	s := newSpinner(" Fetching projects...")
-	s.Start()
-	projects := r.waitForCache()
-	s.Stop()
-
-	if len(projects) > 0 {
-		output.PrintSuccess(fmt.Sprintf("Loaded projects for team '%s'", r.activeTeam))
-	} else {
-		output.PrintWarning("No projects found for the selected team. Loading full list in background...")
-	}
-
-	go r.ensureFullCache()
-	fmt.Println()
+// startCacheLoad fetches projects in the background; commands that need them
+// wait with a loader (waitForCache / ensureFullCache).
+func (r *replState) startCacheLoad() {
+	r.cacheReady = make(chan struct{})
+	go func() {
+		r.fetchProjectCache()
+		r.loadFullCache()
+	}()
 }
 
 func (r *replState) handleExit() {
@@ -734,12 +761,6 @@ func (r *replState) handleExit() {
 }
 
 // ─── Shared Utilities ────────────────────────────────────────────────────────
-
-func newSpinner(suffix string) *spinner.Spinner {
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = suffix
-	return s
-}
 
 func now() time.Time {
 	return time.Now()

@@ -4,9 +4,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"time"
-
-	"github.com/briandowns/spinner"
 
 	"gitlab-ai/internal/models"
 	"gitlab-ai/pkg/output"
@@ -53,8 +50,7 @@ func (r *replState) handleDiff(args []string) {
 	}
 
 	// Step 3: Fetch the diff
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = fmt.Sprintf(" Fetching diff %s..%s from '%s'...", from, to, project)
+	s := output.NewLoader(fmt.Sprintf(" Fetching diff %s..%s from '%s'...", from, to, project))
 	s.Start()
 
 	diffResult, err := r.provider.Repos().GetRefDiff(project, from, to)
@@ -100,8 +96,7 @@ func (r *replState) handleDiff(args []string) {
 }
 
 func (r *replState) promptForTwoTags(project string) (string, string) {
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = fmt.Sprintf(" Fetching tags from '%s'...", project)
+	s := output.NewLoader(fmt.Sprintf(" Fetching tags from '%s'...", project))
 	s.Start()
 
 	tags, err := r.provider.Repos().ListTags(project, 20)
@@ -150,8 +145,7 @@ func (r *replState) promptForTwoTags(project string) (string, string) {
 }
 
 func (r *replState) promptForTwoBranches(project string) (string, string) {
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = fmt.Sprintf(" Fetching branches from '%s'...", project)
+	s := output.NewLoader(fmt.Sprintf(" Fetching branches from '%s'...", project))
 	s.Start()
 
 	branches, err := r.provider.Repos().ListBranches(project, 20)

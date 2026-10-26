@@ -2,14 +2,13 @@ package cmd
 
 import (
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/briandowns/spinner"
 
 	"gitlab-ai/internal/models"
 	"gitlab-ai/pkg/output"
@@ -23,11 +22,7 @@ func (r *replState) handleList() {
 		return
 	}
 
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = " Fetching projects..."
-	s.Start()
 	projects := r.ensureFullCache()
-	s.Stop()
 
 	if len(projects) == 0 {
 		output.PrintWarning("No projects found.")
@@ -58,8 +53,7 @@ func (r *replState) handleBranchCleanup(args []string) {
 	}
 	project = r.resolveProject(project)
 
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = fmt.Sprintf(" Scanning branches in '%s'...", project)
+	s := output.NewLoader(fmt.Sprintf(" Scanning branches in '%s'...", project))
 	s.Start()
 
 	merged, err := r.provider.Repos().ListMergedBranches(project)
@@ -115,8 +109,7 @@ func (r *replState) handleTickets(args []string) {
 		return
 	}
 
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = fmt.Sprintf(" Fetching open tickets from %d projects...", len(projects))
+	s := output.NewProgress(len(projects), "Fetching open tickets...")
 	s.Start()
 
 	type projectIssues struct {
@@ -136,6 +129,7 @@ func (r *replState) handleTickets(args []string) {
 			defer func() { <-sem }()
 
 			result, err := r.provider.Issues().ListProjectIssues(project, models.IssueFilter{State: "opened"})
+			s.Inc()
 			if err != nil {
 				ch <- projectIssues{project: project, err: err}
 				return
@@ -232,8 +226,7 @@ func (r *replState) handleTicketOpen(args []string) {
 		}
 
 		if err := r.ensureAI(); err == nil {
-			s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-			s.Suffix = " Enhancing ticket description with AI..."
+			s := output.NewLoader(" Enhancing ticket description with AI...")
 			s.Start()
 			aiTitle, aiDesc, aiErr := r.enhanceTicketDescription(ticketCtx)
 			s.Stop()
@@ -274,8 +267,7 @@ func (r *replState) handleTicketOpen(args []string) {
 		}
 	}
 
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = fmt.Sprintf(" Creating ticket in '%s'...", project)
+	s := output.NewLoader(fmt.Sprintf(" Creating ticket in '%s'...", project))
 	s.Start()
 	issue, err := r.provider.Issues().CreateIssue(project, title, description, createLabels)
 	s.Stop()
@@ -309,7 +301,7 @@ func (r *replState) handleTicketClose(args []string) {
 		return
 	}
 
-	s := newSpinner(fmt.Sprintf(" Closing ticket #%d...", issueNumber))
+	s := output.NewLoader(fmt.Sprintf(" Closing ticket #%d...", issueNumber))
 	s.Start()
 	err := r.provider.Issues().CloseIssue(project, issueNumber)
 	s.Stop()
@@ -333,7 +325,7 @@ func (r *replState) handleTicketReopen(args []string) {
 		return
 	}
 
-	s := newSpinner(fmt.Sprintf(" Reopening ticket #%d...", issueNumber))
+	s := output.NewLoader(fmt.Sprintf(" Reopening ticket #%d...", issueNumber))
 	s.Start()
 	err := r.provider.Issues().ReopenIssue(project, issueNumber)
 	s.Stop()
@@ -386,7 +378,7 @@ func (r *replState) handleTicketUpdate(args []string) {
 		}
 	}
 
-	s := newSpinner(fmt.Sprintf(" Updating ticket #%d...", issueNumber))
+	s := output.NewLoader(fmt.Sprintf(" Updating ticket #%d...", issueNumber))
 	s.Start()
 	issue, err := r.provider.Issues().UpdateIssue(project, issueNumber, opts)
 	s.Stop()
@@ -425,7 +417,7 @@ func (r *replState) handleTicketSearch(args []string) {
 		return
 	}
 
-	s := newSpinner(fmt.Sprintf(" Searching tickets in '%s'...", project))
+	s := output.NewLoader(fmt.Sprintf(" Searching tickets in '%s'...", project))
 	s.Start()
 	issues, err := r.provider.Issues().SearchIssues(project, query)
 	s.Stop()
@@ -509,8 +501,7 @@ func (r *replState) handleTicketsBlack(args []string) {
 		return
 	}
 
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = fmt.Sprintf(" Scanning malformed tickets across %d projects...", len(projects))
+	s := output.NewProgress(len(projects), "Scanning malformed tickets...")
 	s.Start()
 
 	type projectIssues struct {
@@ -530,6 +521,7 @@ func (r *replState) handleTicketsBlack(args []string) {
 			defer func() { <-sem }()
 
 			result, err := r.provider.Issues().ListProjectIssues(project, models.IssueFilter{State: "opened"})
+			s.Inc()
 			if err != nil {
 				ch <- projectIssues{project: project, err: err}
 				return
@@ -617,18 +609,14 @@ func (r *replState) handleRelease() {
 		return
 	}
 
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = " Fetching all projects for release check..."
-	s.Start()
 	projects := r.ensureFullCache()
-	s.Stop()
 
 	if len(projects) == 0 {
 		output.PrintWarning("No projects found.")
 		return
 	}
 
-	s.Suffix = fmt.Sprintf(" Checking release status for %d projects...", len(projects))
+	s := output.NewProgress(len(projects), "Checking release status...")
 	s.Start()
 
 	type indexedResult struct {
@@ -648,6 +636,7 @@ func (r *replState) handleRelease() {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			info := r.provider.Repos().CheckProjectRelease(proj.Path)
+			s.Inc()
 			ch <- indexedResult{idx: idx, info: info}
 		}(i, p)
 	}
@@ -732,6 +721,10 @@ func (r *replState) releaseCreateMRs(newPending []models.ProjectReleaseInfo) {
 	currentMonth := time.Now().Format("January")
 	mrTitle := fmt.Sprintf("Release - %s", currentMonth)
 	mrDesc := fmt.Sprintf("This is a release MR for %s release.", currentMonth)
+	if ref := r.promptForReleaseTicket(); ref != "" {
+		// "Related to" links the MR to the ticket without closing it on merge.
+		mrDesc += fmt.Sprintf("\n\nRelated to %s", ref)
+	}
 
 	fmt.Println()
 	output.PrintSuccess(fmt.Sprintf("Creating release MRs for %d repo(s)...", len(indices)))
@@ -742,7 +735,7 @@ func (r *replState) releaseCreateMRs(newPending []models.ProjectReleaseInfo) {
 		sourceBranch := p.DevBranch
 		targetBranch := p.MasterBranch
 
-		s := newSpinner(fmt.Sprintf(" Creating MR: %s → %s in '%s'...", sourceBranch, targetBranch, p.Name))
+		s := output.NewLoader(fmt.Sprintf(" Creating MR: %s → %s in '%s'...", sourceBranch, targetBranch, p.Name))
 		s.Start()
 		mr, err := r.provider.MRs().CreateMergeRequest(p.Path, sourceBranch, targetBranch, mrTitle, mrDesc)
 		s.Stop()
@@ -757,4 +750,52 @@ func (r *replState) releaseCreateMRs(newPending []models.ProjectReleaseInfo) {
 		r.stats.mrsCreated++
 	}
 	fmt.Println()
+}
+
+// promptForReleaseTicket asks for an optional ticket and returns a full
+// cross-project reference ("group/project#123"), since release MRs span many
+// projects and a bare "#123" would resolve against each MR's own project.
+func (r *replState) promptForReleaseTicket() string {
+	for {
+		input := r.promptForText("Release ticket (issue URL or group/project#123, blank to skip)")
+		if input == "" {
+			return ""
+		}
+		project, iid, ok := parseIssueRef(input)
+		if !ok {
+			output.PrintWarning("Use an issue URL or group/project#123.")
+			continue
+		}
+		s := output.NewLoader(fmt.Sprintf(" Checking %s#%d...", project, iid))
+		s.Start()
+		issue, err := r.provider.Issues().GetIssue(project, iid)
+		s.Stop()
+		if err != nil {
+			output.PrintWarning(fmt.Sprintf("Ticket not found: %v", err))
+			continue
+		}
+		output.PrintSuccess(fmt.Sprintf("Linking ticket: %s", issue.Title))
+		return fmt.Sprintf("%s#%d", project, iid)
+	}
+}
+
+// parseIssueRef accepts ".../group/project/-/issues/123" or "group/project#123".
+func parseIssueRef(s string) (string, int, bool) {
+	var project, num string
+	if i := strings.Index(s, "/-/issues/"); i >= 0 {
+		base := s[:i]
+		if u, err := url.Parse(base); err == nil && u.Host != "" {
+			base = u.Path
+		}
+		project = strings.Trim(base, "/")
+		num = strings.SplitN(s[i+len("/-/issues/"):], "#", 2)[0]
+		num = strings.TrimRight(strings.SplitN(num, "?", 2)[0], "/")
+	} else if i := strings.LastIndex(s, "#"); i > 0 {
+		project, num = s[:i], s[i+1:]
+	}
+	iid, err := strconv.Atoi(num)
+	if err != nil || iid <= 0 || !strings.Contains(project, "/") {
+		return "", 0, false
+	}
+	return project, iid, true
 }
