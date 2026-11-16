@@ -85,19 +85,11 @@ func (r *replState) handleCreateTicketContent(args []string) {
 	}
 
 	output.PrintFilePath(filename)
-	r.stats.filesCreated++
+	r.recordEffect(audit.CategoryFileWrite)
 	fmt.Println()
 
-	var ticketEventID int64
-	if r.auditor != nil {
-		ticketEventID, _ = r.auditor.Record(audit.Event{
-			Command:  "create-ticket-content",
-			Category: audit.CategoryAIGeneration,
-			Project:  project,
-			Success:  true,
-		})
-		r.auditAI(ticketEventID, chatResult)
-	}
+	ticketEventID := r.curEventID
+	r.auditAI(ticketEventID, chatResult)
 
 	r.ticketPostAction(project, title, description, ticketEventID)
 }
@@ -134,6 +126,7 @@ func (r *replState) createNewTicket(project, title, description string) {
 		return
 	}
 
+	r.recordEffect(audit.CategoryTicketCreated)
 	output.PrintSuccess(fmt.Sprintf("Ticket #%d created: %s", issue.IID, issue.Title))
 	output.PrintURLOpen(issue.WebURL)
 	fmt.Println()
@@ -444,19 +437,11 @@ func (r *replState) handleCreateEpicContent(args []string) {
 	}
 
 	output.PrintFilePath(filename)
-	r.stats.filesCreated++
+	r.recordEffect(audit.CategoryFileWrite)
 	fmt.Println()
 
-	var epicEventID int64
-	if r.auditor != nil {
-		epicEventID, _ = r.auditor.Record(audit.Event{
-			Command:  "create-epic-content",
-			Category: audit.CategoryAIGeneration,
-			Project:  project,
-			Success:  true,
-		})
-		r.auditAI(epicEventID, chatResult)
-	}
+	epicEventID := r.curEventID
+	r.auditAI(epicEventID, chatResult)
 
 	if r.promptForYesNoPost("Do you want to create an epic with this content?") {
 		groupPath := r.activeTeam

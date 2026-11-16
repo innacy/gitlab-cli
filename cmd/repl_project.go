@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"gitlab-ai/internal/models"
+	"gitlab-ai/pkg/audit"
 	"gitlab-ai/pkg/output"
 	"gitlab-ai/pkg/platform"
 )
@@ -183,8 +184,7 @@ func (r *replState) handleTickets(args []string) {
 	output.PrintSuccess("Tickets report saved to:")
 	output.PrintFilePath(filename)
 
-	r.stats.issuesViewed += len(rows)
-	r.stats.filesCreated++
+	r.recordEffect(audit.CategoryFileWrite)
 }
 
 func (r *replState) handleTicketOpen(args []string) {
@@ -275,6 +275,7 @@ func (r *replState) handleTicketOpen(args []string) {
 		output.PrintError(fmt.Sprintf("Failed to create ticket: %v", err))
 		return
 	}
+	r.recordEffect(audit.CategoryTicketCreated)
 
 	output.PrintSuccess(fmt.Sprintf("Ticket #%d created: %s", issue.IID, issue.Title))
 	output.PrintSuccess("Status: todo")
@@ -569,7 +570,7 @@ func (r *replState) handleTicketsBlack(args []string) {
 	output.PrintFilePath(filename)
 	fmt.Println()
 
-	r.stats.filesCreated++
+	r.recordEffect(audit.CategoryFileWrite)
 }
 
 func (r *replState) allTeamProjects() []models.ProjectInfo {
@@ -696,7 +697,7 @@ func (r *replState) handleRelease() {
 	output.PrintFilePath(filename)
 	fmt.Println()
 
-	r.stats.filesCreated++
+	r.recordEffect(audit.CategoryFileWrite)
 
 	if len(report.NewPending) > 0 {
 		r.releaseCreateMRs(report.NewPending)
@@ -747,7 +748,7 @@ func (r *replState) releaseCreateMRs(newPending []models.ProjectReleaseInfo) {
 
 		output.PrintSuccess(fmt.Sprintf("%s: MR !%d created", p.Name, mr.IID))
 		output.PrintURLOpen(mr.WebURL)
-		r.stats.mrsCreated++
+		r.recordEffect(audit.CategoryMRCreated)
 	}
 	fmt.Println()
 }

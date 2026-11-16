@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/fatih/color"
@@ -28,7 +29,16 @@ func PrintWarning(msg string) {
 	fmt.Println(msg)
 }
 
+// errorCount counts PrintError calls. Every handler reports failure through
+// PrintError, so the REPL compares it before/after a command to know whether
+// the command succeeded without changing every handler's signature.
+var errorCount atomic.Int64
+
+// ErrorCount returns how many errors have been printed so far.
+func ErrorCount() int64 { return errorCount.Load() }
+
 func PrintError(msg string) {
+	errorCount.Add(1)
 	t := GetTheme()
 	t.Error.Print("  ✗ ")
 	fmt.Println(msg)

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"gitlab-ai/internal/models"
+	"gitlab-ai/pkg/audit"
 	"gitlab-ai/pkg/output"
 )
 
@@ -87,7 +88,7 @@ func (r *replState) handleDiff(args []string) {
 		}
 		output.PrintSuccess(fmt.Sprintf("Diff is large (%d lines). Saved to:", len(strings.Split(diffContent, "\n"))))
 		output.PrintFilePath(filename)
-		r.stats.filesCreated++
+		r.recordEffect(audit.CategoryFileWrite)
 	} else {
 		fmt.Println()
 		fmt.Println(diffContent)

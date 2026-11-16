@@ -302,6 +302,17 @@ func TestApproveIsRecordedAndStatsPersistAcrossRuns(t *testing.T) {
 	mustContain(t, out, "Last 7 Days", "Commands run:     1")
 }
 
+func TestFailedCommandIsRecordedAsFailure(t *testing.T) {
+	gl := newFakeGitLab(t)
+	// MR 8 does not exist on the fake server, so its approve returns 404.
+	out, _ := run(t, workdir(t, gl.URL), goodToken,
+		"mr-approve team/backend 7", "mr-approve team/backend 8", "list")
+	mustContain(t, out,
+		"Failed to approve MR",
+		"Commands run:    3 (1 failed)", // session summary, read from the audit DB
+	)
+}
+
 func TestStatsRejectsBadMonth(t *testing.T) {
 	gl := newFakeGitLab(t)
 	out, _ := run(t, workdir(t, gl.URL), goodToken, "stats month 2026-13")

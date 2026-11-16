@@ -168,20 +168,9 @@ func (r *replState) handleMRReview(args []string) {
 	fmt.Println()
 
 	r.storeReview(project, mrNumber, mrInfo.Title, filename, output.GenerateGitLabComment(review))
-	r.stats.mrsReviewed++
-	r.stats.filesCreated++
-
-	if r.auditor != nil {
-		evtID, _ := r.auditor.Record(audit.Event{
-			Command:  "mr-review",
-			Category: audit.CategoryAIGeneration,
-			Project:  project,
-			Success:  true,
-			Metadata: map[string]interface{}{"mr": mrNumber},
-		})
-		r.auditAI(evtID, reviewResult)
-		r.lastAIEventID = evtID
-	}
+	r.recordEffect(audit.CategoryFileWrite)
+	r.auditAI(r.curEventID, reviewResult)
+	r.lastAIEventID = r.curEventID
 
 	if r.promptForYesNoPost("Do you want to add this review as a comment to the MR?") {
 		r.postReviewComment(project, mrNumber)
@@ -496,7 +485,7 @@ func (r *replState) handleMROpen(args []string) {
 	output.PrintURLOpen(mr.WebURL)
 	fmt.Println()
 
-	r.stats.mrsCreated++
+	r.recordEffect(audit.CategoryMRCreated)
 	r.refreshCacheAsync()
 }
 

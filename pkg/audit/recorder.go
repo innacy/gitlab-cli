@@ -14,7 +14,13 @@ import (
 const (
 	CategoryAIGeneration   = "ai_generation"
 	CategoryGitLabMutation = "gitlab_mutation"
-	CategoryFileWrite      = "file_write"
+	CategoryRead           = "read"
+
+	// Side effects, recorded under the command that caused them. They are
+	// not commands and are excluded from command counts.
+	CategoryFileWrite     = "file_write"
+	CategoryMRCreated     = "mr_created"
+	CategoryTicketCreated = "ticket_created"
 
 	OutcomeAccepted  = "accepted"
 	OutcomeEdited    = "edited"
@@ -103,6 +109,14 @@ func (r *Recorder) Record(evt Event) (int64, error) {
 		return 0, fmt.Errorf("insert event: %w", err)
 	}
 	return result.LastInsertId()
+}
+
+// Finish stores a command's final duration and outcome on the event that was
+// recorded when it started.
+func (r *Recorder) Finish(eventID, durationMs int64, success bool) error {
+	_, err := r.db.Exec(`UPDATE events SET duration_ms = ?, success = ? WHERE id = ?`,
+		durationMs, success, eventID)
+	return err
 }
 
 func (r *Recorder) RecordAIOutput(out AIOutput) error {

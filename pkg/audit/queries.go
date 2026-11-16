@@ -1,12 +1,17 @@
 package audit
 
-import "database/sql"
+import (
+	"database/sql"
+	"time"
+)
 
 type SummaryResult struct {
-	TotalEvents    int
+	TotalEvents    int // commands run (side-effect events excluded)
+	Failed         int // commands that reported an error
 	AIGenerations  int
 	MRsCreated     int
 	MRsReviewed    int
+	ReviewsPosted  int // successful mr-comment runs
 	TicketsCreated int
 	FilesWritten   int
 }
@@ -44,39 +49,34 @@ type AccuracyResult struct {
 }
 
 func (r *Recorder) Summary(from, to string) (*SummaryResult, error) {
+	return r.summary("date >= ? AND date <= ?", from, to)
+}
+
+// SummarySince summarises everything recorded at or after t (e.g. a session).
+func (r *Recorder) SummarySince(t time.Time) (*SummaryResult, error) {
+	return r.summary("timestamp >= ?", t.UTC().Format(time.RFC3339))
+}
+
+const isCommand = "category NOT IN ('" + CategoryFileWrite + "','" + CategoryMRCreated + "','" + CategoryTicketCreated + "')"
+
+func (r *Recorder) summary(where string, args ...any) (*SummaryResult, error) {
 	s := &SummaryResult{}
-	err := r.db.QueryRow(
-		"SELECT COUNT(*) FROM events WHERE date >= ? AND date <= ?", from, to,
-	).Scan(&s.TotalEvents)
+	err := r.db.QueryRow(`SELECT
+		COUNT(CASE WHEN `+isCommand+` THEN 1 END),
+		COUNT(CASE WHEN `+isCommand+` AND success = 0 THEN 1 END),
+		COUNT(CASE WHEN category = ? THEN 1 END),
+		COUNT(CASE WHEN category = ? THEN 1 END),
+		COUNT(CASE WHEN command = 'mr-review' AND category = ? AND success = 1 THEN 1 END),
+		COUNT(CASE WHEN command = 'mr-comment' AND `+isCommand+` AND success = 1 THEN 1 END),
+		COUNT(CASE WHEN category = ? THEN 1 END),
+		COUNT(CASE WHEN category = ? THEN 1 END)
+		FROM events WHERE `+where,
+		append([]any{CategoryAIGeneration, CategoryMRCreated, CategoryAIGeneration, CategoryTicketCreated, CategoryFileWrite}, args...)...,
+	).Scan(&s.TotalEvents, &s.Failed, &s.AIGenerations, &s.MRsCreated, &s.MRsReviewed,
+		&s.ReviewsPosted, &s.TicketsCreated, &s.FilesWritten)
 	if err != nil {
 		return nil, err
 	}
-
-	_ = r.db.QueryRow(
-		"SELECT COUNT(*) FROM events WHERE date >= ? AND date <= ? AND category = ?",
-		from, to, CategoryAIGeneration,
-	).Scan(&s.AIGenerations)
-
-	_ = r.db.QueryRow(
-		"SELECT COUNT(*) FROM events WHERE date >= ? AND date <= ? AND command = 'mr-open'",
-		from, to,
-	).Scan(&s.MRsCreated)
-
-	_ = r.db.QueryRow(
-		"SELECT COUNT(*) FROM events WHERE date >= ? AND date <= ? AND command = 'mr-review'",
-		from, to,
-	).Scan(&s.MRsReviewed)
-
-	_ = r.db.QueryRow(
-		"SELECT COUNT(*) FROM events WHERE date >= ? AND date <= ? AND command = 'ticket-open'",
-		from, to,
-	).Scan(&s.TicketsCreated)
-
-	_ = r.db.QueryRow(
-		"SELECT COUNT(*) FROM events WHERE date >= ? AND date <= ? AND category = ?",
-		from, to, CategoryFileWrite,
-	).Scan(&s.FilesWritten)
-
 	return s, nil
 }
 

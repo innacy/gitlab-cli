@@ -109,3 +109,52 @@ func TestAccuracyStats(t *testing.T) {
 		t.Errorf("accepted=%d want 3", acc.Accepted)
 	}
 }
+
+func TestSummarySeparatesCommandsFromEffectsAndCountsFailures(t *testing.T) {
+	rec, _ := OpenInMemory()
+	defer rec.Close()
+
+	ok, _ := rec.Record(Event{Command: "mr-review", Category: CategoryAIGeneration, Success: true})
+	_ = rec.Finish(ok, 1200, true)
+	failed, _ := rec.Record(Event{Command: "mr-approve", Category: CategoryGitLabMutation, Success: true})
+	_ = rec.Finish(failed, 50, false)
+	rec.Record(Event{Command: "mr-comment", Category: CategoryGitLabMutation, Success: true})
+	rec.Record(Event{Command: "mr-review", Category: CategoryFileWrite, Success: true})
+	rec.Record(Event{Command: "mr-open", Category: CategoryMRCreated, Success: true})
+	rec.Record(Event{Command: "ticket-open", Category: CategoryTicketCreated, Success: true})
+
+	today := time.Now().UTC().Format("2006-01-02")
+	s, err := rec.Summary(today, today)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := SummaryResult{TotalEvents: 3, Failed: 1, AIGenerations: 1, MRsCreated: 1,
+		MRsReviewed: 1, ReviewsPosted: 1, TicketsCreated: 1, FilesWritten: 1}
+	if *s != want {
+		t.Errorf("summary = %+v\nwant      %+v", *s, want)
+	}
+
+	var dur int64
+	var success bool
+	rec.db.QueryRow("SELECT duration_ms, success FROM events WHERE id = ?", failed).Scan(&dur, &success)
+	if dur != 50 || success {
+		t.Errorf("Finish stored duration=%d success=%v, want 50 false", dur, success)
+	}
+}
+
+func TestSummarySince(t *testing.T) {
+	rec, _ := OpenInMemory()
+	defer rec.Close()
+	rec.db.Exec(`INSERT INTO events (timestamp, date, command, category, success)
+		VALUES ('2000-01-01T00:00:00Z', '2000-01-01', 'mr-open', 'gitlab_mutation', 1)`)
+	start := time.Now().Add(-time.Second)
+	rec.Record(Event{Command: "mr-open", Category: CategoryGitLabMutation, Success: true})
+
+	s, err := rec.SummarySince(start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.TotalEvents != 1 {
+		t.Errorf("SummarySince counted %d events, want 1 (older row must be excluded)", s.TotalEvents)
+	}
+}
