@@ -43,6 +43,7 @@ type replState struct {
 
 	activeTeam      string
 	projectCache    []models.ProjectInfo
+	cacheGen        int // bumped on team/env switch; stale background loads are dropped
 	cacheMu         sync.RWMutex
 	cacheReady      chan struct{}
 	fullCacheMu     sync.Mutex
@@ -130,23 +131,35 @@ func (r *replState) refreshCache() {
 }
 
 func (r *replState) refreshCacheWithLimit(limit int) {
+	r.cacheMu.RLock()
+	prov, gen, since := r.provider, r.cacheGen, r.lastRefreshTime
+	r.cacheMu.RUnlock()
+	if prov == nil {
+		return
+	}
+
 	var projects []models.ProjectInfo
 	var err error
 
-	if r.lastRefreshTime.IsZero() {
+	if since.IsZero() {
 		if limit > 0 {
-			projects, err = r.provider.Repos().ListRecentProjects(limit)
+			projects, err = prov.Repos().ListRecentProjects(limit)
 		} else {
-			projects, err = r.provider.Repos().ListProjects()
+			projects, err = prov.Repos().ListProjects()
 		}
 	} else {
-		projects, err = r.provider.Repos().ListProjectsSince(r.lastRefreshTime, 1)
+		projects, err = prov.Repos().ListProjectsSince(since, 1)
 	}
 	if err != nil {
 		return
 	}
 
 	r.cacheMu.Lock()
+	if gen != r.cacheGen {
+		// Team or environment switched while we were fetching.
+		r.cacheMu.Unlock()
+		return
+	}
 	if r.lastRefreshTime.IsZero() {
 		r.projectCache = r.filterByTeam(projects)
 	} else {
@@ -156,9 +169,8 @@ func (r *replState) refreshCacheWithLimit(limit int) {
 	sort.Slice(r.projectCache, func(i, j int) bool {
 		return r.projectCache[i].LastActivity.After(r.projectCache[j].LastActivity)
 	})
-	r.cacheMu.Unlock()
-
 	r.lastRefreshTime = time.Now()
+	r.cacheMu.Unlock()
 }
 
 func (r *replState) filterByTeam(projects []models.ProjectInfo) []models.ProjectInfo {
@@ -215,7 +227,9 @@ func (r *replState) loadFullCache() {
 	r.cacheMu.RUnlock()
 
 	if count <= startupProjectLimit {
+		r.cacheMu.Lock()
 		r.lastRefreshTime = time.Time{}
+		r.cacheMu.Unlock()
 		r.refreshCacheWithLimit(0)
 	}
 }
@@ -328,7 +342,7 @@ func RunREPL(cfg *config.AppConfig) {
 	completer := r.buildCompleter()
 
 	rl, err := readline.NewEx(&readline.Config{
-		Prompt:            "git-agent> ",
+		Prompt:            r.prompt(),
 		AutoComplete:      completer,
 		InterruptPrompt:   "^C",
 		EOFPrompt:         "exit",
@@ -479,6 +493,20 @@ func (r *replState) recordEffect(category string) {
 	})
 }
 
+// prompt shows the active environment and team: "git-agent[work/cnips]> ".
+func (r *replState) prompt() string {
+	var ctx []string
+	for _, s := range []string{r.cfg.Environment, r.activeTeam} {
+		if s != "" {
+			ctx = append(ctx, s)
+		}
+	}
+	if len(ctx) == 0 {
+		return "git-agent> "
+	}
+	return "git-agent[" + strings.Join(ctx, "/") + "]> "
+}
+
 // ─── Session ─────────────────────────────────────────────────────────────────
 
 func (r *replState) ensureSession() bool {
@@ -487,7 +515,11 @@ func (r *replState) ensureSession() bool {
 	}
 
 	output.PrintWarning("No active session — auto-starting...")
+	return r.connect()
+}
 
+// connect authenticates against the configured platform and starts a session.
+func (r *replState) connect() bool {
 	platformName := r.cfg.Platform
 	if platformName == "" {
 		platformName = "gitlab"
@@ -504,13 +536,18 @@ func (r *replState) ensureSession() bool {
 		return false
 	}
 
+	r.cacheMu.Lock()
 	r.provider = prov
+	r.cacheMu.Unlock()
 	r.username = prov.Username()
 	r.startedAt = time.Now()
 
 	fmt.Println()
 	output.PrintSuccess(fmt.Sprintf("Authenticated as %s (@%s)", prov.UserDisplayName(), prov.Username()))
 	output.PrintSuccess(fmt.Sprintf("Platform: %s", prov.Name()))
+	if r.cfg.Environment != "" {
+		output.PrintSuccess(fmt.Sprintf("Environment: %s", r.cfg.Environment))
+	}
 	output.PrintURL(r.cfg.GitLab.BaseURL)
 
 	if len(r.cfg.Teams) == 1 {
@@ -525,6 +562,9 @@ func (r *replState) ensureSession() bool {
 	}
 
 	r.startCacheLoad()
+	if r.rl != nil {
+		r.rl.SetPrompt(r.prompt())
+	}
 
 	output.PrintSuccess("Session started — ready for commands")
 	fmt.Println()

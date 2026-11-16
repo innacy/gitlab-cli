@@ -153,7 +153,7 @@ func (r *replState) handleStatsDashboard() {
 
 	r.rl.SetPrompt("")
 	r.rl.Readline()
-	r.rl.SetPrompt("git-agent> ")
+	r.rl.SetPrompt(r.prompt())
 	r.resetIdle()
 	shutdown()
 	output.PrintSuccess("Dashboard stopped.")

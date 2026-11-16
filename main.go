@@ -15,15 +15,10 @@ import (
 
 func main() {
 	configPath := flag.String("config", "", "path to config.yaml (default: ./config.yaml, ./configs/, then "+config.Dir()+")")
+	env := flag.String("env", "", "environment profile from the 'environments:' config section")
 	flag.Parse()
 
-	var cfg *config.AppConfig
-	var err error
-	if *configPath != "" {
-		cfg, err = config.LoadFrom(*configPath)
-	} else {
-		cfg, err = config.Load()
-	}
+	cfg, err := config.LoadWith(*configPath, *env)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
 		os.Exit(1)
