@@ -52,7 +52,6 @@ func setDefaultsOn(v *viper.Viper) {
 	v.SetDefault("merge.remove_source_branch", true)
 
 	v.SetDefault("cli.color_output", true)
-	v.SetDefault("cli.markdown_rendering", true)
 	v.SetDefault("cli.verbose", false)
 	v.SetDefault("cli.confirm_before_post", true)
 	v.SetDefault("cli.non_interactive", false)

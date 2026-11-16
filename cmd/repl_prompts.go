@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fatih/color"
 	"golang.org/x/term"
 
 	"gitlab-ai/internal/models"
@@ -42,10 +41,9 @@ func (r *replState) interactiveSelect(title string, options []string) int {
 	maxOptLen := width - prefixLen
 	display := make([]string, len(options))
 	for i, opt := range options {
-		if maxOptLen > 3 && len(opt) > maxOptLen {
-			display[i] = opt[:maxOptLen-3] + "..."
-		} else {
-			display[i] = opt
+		display[i] = opt
+		if maxOptLen > 3 {
+			display[i] = output.Truncate(opt, maxOptLen)
 		}
 	}
 
@@ -142,7 +140,7 @@ func (r *replState) interactiveSelect(title string, options []string) int {
 // fallbackChoice is used when the terminal doesn't support raw mode.
 func (r *replState) fallbackChoice(title string, options []string) int {
 	fmt.Println()
-	color.New(color.FgCyan, color.Bold).Println(title)
+	output.GetTheme().Header.Println(title)
 	for i, opt := range options {
 		fmt.Printf("  %d. %s\n", i+1, opt)
 	}
@@ -217,7 +215,7 @@ func (r *replState) promptForProject(title string) string {
 		}
 
 		fmt.Println()
-		color.New(color.FgCyan, color.Bold).Println("  Enter project name or path (Tab to auto-complete):")
+		output.GetTheme().Header.Println("  Enter project name or path (Tab to auto-complete):")
 
 		r.rl.SetPrompt("project> ")
 		defer r.rl.SetPrompt(r.prompt())

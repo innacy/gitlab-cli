@@ -22,6 +22,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 const goodToken = "e2e-token"
@@ -411,7 +412,8 @@ func TestMRStatusResolvesShortProjectName(t *testing.T) {
 func TestPipelineList(t *testing.T) {
 	gl := newFakeGitLab(t)
 	out, _ := run(t, workdir(t, gl.URL), goodToken, "pipeline team/backend")
-	mustContain(t, out, "Pipelines — team/backend", "99", "failed", "Total: 1 pipelines")
+	mustContain(t, out, "Pipelines — team/backend", "99", "✗ failed", "Total: 1 pipelines")
+	mustNotContain(t, out, "❌")
 }
 
 func TestConfigShowsAIKeyFromEnv(t *testing.T) {
@@ -569,6 +571,21 @@ func TestStatsBreakdownAndExport(t *testing.T) {
 		"Exported 3 events",
 		"Usage: stats export csv|json",
 	)
+	// Every line of the stats box ("Activity — Today" has a multi-byte dash)
+	// must be the same width, or the right border is ragged.
+	box := out[strings.LastIndex(out[:strings.Index(out, "Activity — Today")], "\n"):strings.Index(out, "Session Summary")]
+	var widths []int
+	for _, l := range strings.Split(box, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(l), "│") {
+			widths = append(widths, utf8.RuneCountInString(l))
+		}
+	}
+	for _, w := range widths {
+		if w != widths[0] {
+			t.Errorf("stats box lines have different widths: %v", widths)
+			break
+		}
+	}
 	today := time.Now().Format("2006-01-02")
 	csvData, err := os.ReadFile(filepath.Join(dir, ".data", "stats_"+today+"_"+today+".csv"))
 	if err != nil {

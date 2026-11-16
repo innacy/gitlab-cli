@@ -556,9 +556,7 @@ func parseContentResponse(response string) (title, description string) {
 	title = strings.TrimSpace(lines[0])
 	title = strings.TrimPrefix(title, "# ")
 	title = strings.TrimPrefix(title, "## ")
-	if len(title) > 200 {
-		title = strings.TrimSpace(title[:200])
-	}
+	title = strings.TrimSpace(output.Cut(title, 200))
 
 	if len(lines) > 1 {
 		description = strings.TrimSpace(lines[1])

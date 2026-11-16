@@ -154,7 +154,6 @@ type MergeConfig struct {
 // CLIConfig holds CLI behavior settings.
 type CLIConfig struct {
 	ColorOutput        bool   `mapstructure:"color_output" yaml:"color_output"`
-	MarkdownRendering  bool   `mapstructure:"markdown_rendering" yaml:"markdown_rendering"`
 	Verbose            bool   `mapstructure:"verbose" yaml:"verbose"`
 	ConfirmBeforePost  bool   `mapstructure:"confirm_before_post" yaml:"confirm_before_post"`
 	NonInteractive     bool   `mapstructure:"non_interactive" yaml:"non_interactive"`

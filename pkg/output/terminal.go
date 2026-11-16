@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	warningIcon = color.YellowString("⚠")
+	warningIcon = "⚠"
 )
 
 func PrintSuccess(msg string) {
@@ -63,7 +63,7 @@ func PrintMRInfo(mr *models.MergeRequestInfo) {
 // PrintReview displays a review in the terminal.
 func PrintReview(review *models.Review) {
 	fmt.Println()
-	titleColor := color.New(color.FgCyan, color.Bold)
+	titleColor := GetTheme().Header
 	titleColor.Printf("# MR Review: %s (#%d)\n\n", review.MRTitle, review.MRNumber)
 
 	if review.ProjectName != "" {
@@ -73,7 +73,7 @@ func PrintReview(review *models.Review) {
 	fmt.Printf("**Branch:** %s → %s\n", review.SourceBranch, review.TargetBranch)
 	fmt.Printf("**Changes:** %d files, +%d -%d lines\n\n", review.FilesChanged, review.Additions, review.Deletions)
 
-	sectionColor := color.New(color.FgYellow, color.Bold)
+	sectionColor := GetTheme().Accent
 	for _, section := range review.Sections {
 		sectionColor.Printf("## %s\n\n", section.Name)
 		fmt.Println(section.Content)
@@ -84,7 +84,7 @@ func PrintReview(review *models.Review) {
 // PrintIssuesTable displays issues in a formatted table.
 func PrintIssuesTable(result *models.IssueListResult) {
 	fmt.Println()
-	headerColor := color.New(color.FgCyan, color.Bold)
+	headerColor := GetTheme().Header
 	headerColor.Printf("Issues for project '%s' (Assigned to you)\n\n", result.ProjectName)
 
 	table := tablewriter.NewWriter(os.Stdout)
@@ -103,10 +103,7 @@ func PrintIssuesTable(result *models.IssueListResult) {
 		updated := TimeAgo(issue.UpdatedAt)
 
 		// Truncate title if too long
-		title := issue.Title
-		if len(title) > 45 {
-			title = title[:42] + "..."
-		}
+		title := Truncate(issue.Title, 45)
 
 		table.Append([]string{
 			fmt.Sprintf("%d", issue.IID),
@@ -124,7 +121,7 @@ func PrintIssuesTable(result *models.IssueListResult) {
 // PrintProjectsTable displays a list of projects in a formatted table.
 func PrintProjectsTable(projects []models.ProjectInfo) {
 	fmt.Println()
-	headerColor := color.New(color.FgCyan, color.Bold)
+	headerColor := GetTheme().Header
 	headerColor.Println("Accessible Projects")
 	fmt.Println()
 
@@ -142,10 +139,7 @@ func PrintProjectsTable(projects []models.ProjectInfo) {
 	for _, p := range projects {
 		activity := TimeAgo(p.LastActivity)
 
-		name := p.Name
-		if len(name) > 30 {
-			name = name[:27] + "..."
-		}
+		name := Truncate(p.Name, 30)
 
 		table.Append([]string{
 			p.Path,
@@ -162,7 +156,7 @@ func PrintProjectsTable(projects []models.ProjectInfo) {
 // PrintMRListTable displays merge requests in a table.
 func PrintMRListTable(mrs []models.MRListItem, title string) {
 	fmt.Println()
-	headerColor := color.New(color.FgCyan, color.Bold)
+	headerColor := GetTheme().Header
 	headerColor.Println(title)
 	fmt.Println()
 
@@ -178,14 +172,8 @@ func PrintMRListTable(mrs []models.MRListItem, title string) {
 	table.SetColWidth(50)
 
 	for _, mr := range mrs {
-		title := mr.Title
-		if len(title) > 45 {
-			title = title[:42] + "..."
-		}
-		branch := fmt.Sprintf("%s → %s", mr.SourceBranch, mr.TargetBranch)
-		if len(branch) > 35 {
-			branch = branch[:32] + "..."
-		}
+		title := Truncate(mr.Title, 45)
+		branch := Truncate(fmt.Sprintf("%s → %s", mr.SourceBranch, mr.TargetBranch), 35)
 		table.Append([]string{
 			fmt.Sprintf("%d", mr.IID),
 			title,
@@ -202,7 +190,7 @@ func PrintMRListTable(mrs []models.MRListItem, title string) {
 // PrintBranchesTable displays branches in a formatted table.
 func PrintBranchesTable(branches []models.BranchInfo, title string) {
 	fmt.Println()
-	headerColor := color.New(color.FgCyan, color.Bold)
+	headerColor := GetTheme().Header
 	headerColor.Println(title)
 	fmt.Println()
 
@@ -218,10 +206,7 @@ func PrintBranchesTable(branches []models.BranchInfo, title string) {
 	table.SetColWidth(50)
 
 	for i, b := range branches {
-		commit := b.CommitTitle
-		if len(commit) > 40 {
-			commit = commit[:37] + "..."
-		}
+		commit := Truncate(b.CommitTitle, 40)
 		status := ""
 		if b.Merged {
 			status = "merged"
@@ -245,7 +230,7 @@ func PrintBranchesTable(branches []models.BranchInfo, title string) {
 // PrintPipelinesTable displays a list of pipelines in a table.
 func PrintPipelinesTable(pipelines []models.PipelineInfo, title string) {
 	fmt.Println()
-	headerColor := color.New(color.FgCyan, color.Bold)
+	headerColor := GetTheme().Header
 	headerColor.Println(title)
 	fmt.Println()
 
@@ -259,22 +244,9 @@ func PrintPipelinesTable(pipelines []models.PipelineInfo, title string) {
 	table.SetAlignment(tablewriter.ALIGN_LEFT)
 
 	for _, pl := range pipelines {
-		icon := "⬜"
-		switch pl.Status {
-		case "success":
-			icon = "✅"
-		case "failed":
-			icon = "❌"
-		case "running":
-			icon = "🔄"
-		case "pending":
-			icon = "⏳"
-		case "canceled":
-			icon = "🚫"
-		}
 		table.Append([]string{
 			fmt.Sprintf("%d", pl.ID),
-			fmt.Sprintf("%s %s", icon, pl.Status),
+			StatusLabel(pl.Status),
 			pl.Ref,
 			pl.WebURL,
 		})
@@ -287,19 +259,10 @@ func PrintPipelinesTable(pipelines []models.PipelineInfo, title string) {
 // PrintPipelineStatus displays CI/CD pipeline status with jobs.
 func PrintPipelineStatus(pipeline *models.PipelineInfo) {
 	fmt.Println()
-	headerColor := color.New(color.FgCyan, color.Bold)
+	headerColor := GetTheme().Header
 	headerColor.Printf("Pipeline #%d — %s\n", pipeline.ID, pipeline.Ref)
 
-	statusColor := color.New(color.FgRed, color.Bold)
-	switch pipeline.Status {
-	case "success":
-		statusColor = color.New(color.FgGreen, color.Bold)
-	case "running", "pending":
-		statusColor = color.New(color.FgYellow, color.Bold)
-	case "canceled", "skipped":
-		statusColor = color.New(color.FgHiBlack)
-	}
-	statusColor.Printf("Status: %s\n", strings.ToUpper(pipeline.Status))
+	fmt.Printf("Status: %s\n", StatusLabel(pipeline.Status))
 
 	if pipeline.WebURL != "" {
 		PrintURL(pipeline.WebURL)
@@ -317,25 +280,10 @@ func PrintPipelineStatus(pipeline *models.PipelineInfo) {
 		table.SetAlignment(tablewriter.ALIGN_LEFT)
 
 		for _, job := range pipeline.Jobs {
-			icon := "⬜"
-			switch job.Status {
-			case "success":
-				icon = "✅"
-			case "failed":
-				icon = "❌"
-			case "running":
-				icon = "🔄"
-			case "pending":
-				icon = "⏳"
-			case "canceled":
-				icon = "🚫"
-			case "skipped":
-				icon = "⏭️"
-			}
 			table.Append([]string{
 				job.Stage,
 				job.Name,
-				fmt.Sprintf("%s %s", icon, job.Status),
+				StatusLabel(job.Status),
 			})
 		}
 		table.Render()
@@ -346,7 +294,7 @@ func PrintPipelineStatus(pipeline *models.PipelineInfo) {
 // PrintReleaseReport displays the release status of all projects.
 func PrintReleaseReport(report *models.ReleaseReport) {
 	fmt.Println()
-	headerColor := color.New(color.FgCyan, color.Bold)
+	headerColor := GetTheme().Header
 	headerColor.Println("Release Status Report")
 	headerColor.Printf("Generated: %s\n", report.GeneratedAt.Format("2006-01-02 15:04"))
 	fmt.Println()
@@ -373,10 +321,8 @@ func PrintReleaseReport(report *models.ReleaseReport) {
 		maxLen = 20
 	}
 
-	pendingStyle := color.New(color.FgYellow, color.Bold)
-	newStyle := color.New(color.FgHiGreen, color.Bold)
-	releasedStyle := color.New(color.FgGreen)
-	invalidStyle := color.New(color.FgHiBlack)
+	t := GetTheme()
+	pendingStyle, newStyle, releasedStyle, invalidStyle := t.Warning, t.Success, t.Success, t.Muted
 	sectionTitle := color.New(color.Bold)
 	dim := color.New(color.Faint)
 
@@ -421,7 +367,7 @@ func PrintReleaseReport(report *models.ReleaseReport) {
 		for _, p := range report.Invalid {
 			padded := fmt.Sprintf("%-*s", maxLen, p.Name)
 			invalidStyle.Printf("    %s", padded)
-			fmt.Printf(" - %s %s\n", warningIcon, p.InvalidReason)
+			fmt.Printf(" - %s %s\n", t.Warning.Sprint(warningIcon), p.InvalidReason)
 		}
 		fmt.Println()
 	}
