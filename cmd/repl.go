@@ -91,11 +91,12 @@ func (r *replState) projectSuggestions() []string {
 // waitCacheReady blocks until the startup fetch finishes, showing a loader
 // only if the cache isn't ready yet.
 func (r *replState) waitCacheReady(timeout time.Duration) {
-	if r.cacheReady == nil {
+	ready := r.readyChan()
+	if ready == nil {
 		return
 	}
 	select {
-	case <-r.cacheReady:
+	case <-ready:
 		return
 	default:
 	}
@@ -103,9 +104,17 @@ func (r *replState) waitCacheReady(timeout time.Duration) {
 	s.Start()
 	defer s.Stop()
 	select {
-	case <-r.cacheReady:
+	case <-ready:
 	case <-time.After(timeout):
 	}
+}
+
+// readyChan returns the channel closed when the current startup fetch is done.
+// startCacheLoad replaces it on team/env switch, so it is read under cacheMu.
+func (r *replState) readyChan() chan struct{} {
+	r.cacheMu.RLock()
+	defer r.cacheMu.RUnlock()
+	return r.cacheReady
 }
 
 func (r *replState) waitForCache() []models.ProjectInfo {
@@ -119,10 +128,11 @@ func (r *replState) waitForCache() []models.ProjectInfo {
 
 const startupProjectLimit = 10
 
-func (r *replState) fetchProjectCache() {
-	if r.cacheReady != nil {
-		defer close(r.cacheReady)
-	}
+// fetchProjectCache loads the first projects and closes ready. The channel is
+// passed in rather than read from r: after a switch, r.cacheReady is a new
+// channel that belongs to the new load and must not be closed by this one.
+func (r *replState) fetchProjectCache(ready chan struct{}) {
+	defer close(ready)
 	r.refreshCacheWithLimit(startupProjectLimit)
 }
 
@@ -215,9 +225,9 @@ func (r *replState) loadFullCache() {
 	r.fullCacheMu.Lock()
 	defer r.fullCacheMu.Unlock()
 
-	if r.cacheReady != nil {
+	if ready := r.readyChan(); ready != nil {
 		select {
-		case <-r.cacheReady:
+		case <-ready:
 		case <-time.After(30 * time.Second):
 		}
 	}
@@ -372,12 +382,19 @@ func newSession(cfg *config.AppConfig) (r *replState, close func(), err error) {
 // RunOnce runs a single command non-interactively (git-agent mr-status x)
 // and returns the process exit code: 1 if the command reported an error.
 func RunOnce(cfg *config.AppConfig, args []string) int {
-	r, closeSession, err := newSession(cfg)
+	r, _, err := newSession(cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize: %v\n", err)
 		return 1
 	}
-	defer closeSession()
+	// ponytail: readline.Close races with readline's own terminal goroutine
+	// when no line was ever read (chzyer/readline v1.5.1), and the process
+	// exits right after, so only the audit DB is closed.
+	defer func() {
+		if r.auditor != nil {
+			r.auditor.Close()
+		}
+	}()
 
 	before := output.ErrorCount()
 	r.dispatch(strings.Join(args, " "))
@@ -631,9 +648,12 @@ func (r *replState) handleStart() {
 // startCacheLoad fetches projects in the background; commands that need them
 // wait with a loader (waitForCache / ensureFullCache).
 func (r *replState) startCacheLoad() {
-	r.cacheReady = make(chan struct{})
+	ready := make(chan struct{})
+	r.cacheMu.Lock()
+	r.cacheReady = ready
+	r.cacheMu.Unlock()
 	go func() {
-		r.fetchProjectCache()
+		r.fetchProjectCache(ready)
 		r.loadFullCache()
 	}()
 }
