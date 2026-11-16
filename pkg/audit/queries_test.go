@@ -46,7 +46,7 @@ func TestSummary(t *testing.T) {
 	defer rec.Close()
 	seedEvents(t, rec)
 
-	today := time.Now().UTC().Format("2006-01-02")
+	today := time.Now().Format("2006-01-02")
 	s, err := rec.Summary(today, today)
 	if err != nil {
 		t.Fatalf("summary: %v", err)
@@ -64,7 +64,7 @@ func TestHeatmap(t *testing.T) {
 	defer rec.Close()
 	seedEvents(t, rec)
 
-	today := time.Now().UTC().Format("2006-01-02")
+	today := time.Now().Format("2006-01-02")
 	days, err := rec.Heatmap(today, today)
 	if err != nil {
 		t.Fatalf("heatmap: %v", err)
@@ -82,7 +82,7 @@ func TestModelUsage(t *testing.T) {
 	defer rec.Close()
 	seedEvents(t, rec)
 
-	today := time.Now().UTC().Format("2006-01-02")
+	today := time.Now().Format("2006-01-02")
 	models, err := rec.ModelUsage(today, today)
 	if err != nil {
 		t.Fatalf("model usage: %v", err)
@@ -100,7 +100,7 @@ func TestAccuracyStats(t *testing.T) {
 	defer rec.Close()
 	seedEvents(t, rec)
 
-	today := time.Now().UTC().Format("2006-01-02")
+	today := time.Now().Format("2006-01-02")
 	acc, err := rec.AccuracyStats(today, today)
 	if err != nil {
 		t.Fatalf("accuracy: %v", err)
@@ -123,7 +123,7 @@ func TestSummarySeparatesCommandsFromEffectsAndCountsFailures(t *testing.T) {
 	rec.Record(Event{Command: "mr-open", Category: CategoryMRCreated, Success: true})
 	rec.Record(Event{Command: "ticket-open", Category: CategoryTicketCreated, Success: true})
 
-	today := time.Now().UTC().Format("2006-01-02")
+	today := time.Now().Format("2006-01-02")
 	s, err := rec.Summary(today, today)
 	if err != nil {
 		t.Fatal(err)
