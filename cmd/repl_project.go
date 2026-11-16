@@ -302,6 +302,9 @@ func (r *replState) handleTicketClose(args []string) {
 		return
 	}
 
+	if !r.confirm(fmt.Sprintf("Close ticket #%d in %s?", issueNumber, project)) {
+		return
+	}
 	s := output.NewLoader(fmt.Sprintf(" Closing ticket #%d...", issueNumber))
 	s.Start()
 	err := r.provider.Issues().CloseIssue(project, issueNumber)

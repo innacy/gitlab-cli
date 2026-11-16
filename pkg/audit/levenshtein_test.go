@@ -20,3 +20,14 @@ func TestEditRatio(t *testing.T) {
 		}
 	}
 }
+
+func TestDistance(t *testing.T) {
+	for _, c := range []struct {
+		a, b string
+		d    int
+	}{{"", "", 0}, {"abc", "abc", 0}, {"mr-staus", "mr-status", 1}, {"kitten", "sitting", 3}, {"ä", "a", 1}, {"lsit", "list", 1}, {"ab", "ba", 1}} {
+		if got := Distance(c.a, c.b); got != c.d {
+			t.Errorf("Distance(%q,%q) = %d, want %d", c.a, c.b, got, c.d)
+		}
+	}
+}

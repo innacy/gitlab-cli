@@ -454,6 +454,17 @@ func (r *replState) dispatch(line string) bool {
 	case renamedCommands[name] != "":
 		output.PrintWarning(renamedCommands[name])
 	default:
+		if s := suggestCommand(name); s != "" {
+			fixed := strings.Join(append([]string{s}, parts[1:]...), " ")
+			switch r.promptForChoice(fmt.Sprintf("Unknown command '%s'. Did you mean '%s'?", name, s),
+				[]string{"Run: " + fixed, "Ask AI instead"}) {
+			case 0:
+				return r.dispatch(fixed)
+			case 1:
+				r.handleIntentOrChat(line)
+			}
+			break
+		}
 		r.handleIntentOrChat(line)
 	}
 

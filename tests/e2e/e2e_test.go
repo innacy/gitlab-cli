@@ -98,6 +98,8 @@ func newFakeGitLab(t *testing.T) *fakeGitLab {
 			io.WriteString(w, `{"id":70,"iid":7,"title":"Add login","changes":[{"old_path":"login.go","new_path":"login.go","diff":"@@ -1 +1,2 @@\n+func Login() {}\n"}]}`)
 		case path == proj+"/merge_requests/7/approve" && r.Method == http.MethodPost:
 			io.WriteString(w, `{"id":70,"iid":7}`)
+		case path == proj+"/pipelines/99/cancel" && r.Method == http.MethodPost:
+			io.WriteString(w, `{"id":99,"status":"canceled","ref":"main"}`)
 		case path == proj+"/pipelines":
 			io.WriteString(w, `[{"id":99,"status":"failed","ref":"main","web_url":"http://x/p/99"}]`)
 		default:
@@ -463,6 +465,34 @@ func TestHelpConfigAndRenamedCommands(t *testing.T) {
 		"Active Team:    team",
 		"use 'mr-open' instead",
 	)
+}
+
+// ─── Typos and confirmations ─────────────────────────────────────────────────
+
+func TestTypoSuggestsCommand(t *testing.T) {
+	gl := newFakeGitLab(t)
+	// "1" picks "Run: mr-status team/backend" from the did-you-mean menu.
+	out, _ := run(t, workdir(t, gl.URL), goodToken, "mr-staus team/backend", "1")
+	mustContain(t, out,
+		"Unknown command 'mr-staus'. Did you mean 'mr-status'?",
+		"Open MRs — team/backend",
+	)
+}
+
+func TestDestructiveCommandsAskFirst(t *testing.T) {
+	gl := newFakeGitLab(t)
+	out, _ := run(t, workdir(t, gl.URL), goodToken,
+		"mr-merge team/backend 7", "2", // decline merge
+		"pipeline-cancel team/backend 99", "1", // confirm cancel
+	)
+	mustContain(t, out, "Merge MR #7 in team/backend?", "Cancelled.", "Cancel pipeline #99 in team/backend?")
+	if gl.called("PUT /projects/10/merge_requests/7/merge") || gl.called("PUT /projects/team%2Fbackend/merge_requests/7/merge") {
+		t.Error("merge was sent although the user declined")
+	}
+	if !gl.called("POST /projects/team%2Fbackend/pipelines/99/cancel") && !gl.called("POST /projects/10/pipelines/99/cancel") {
+		t.Errorf("cancel not sent after confirming; calls: %v", gl.calls)
+	}
+	mustContain(t, out, "Commands run:    2 (0 failed)") // declining is not a failure
 }
 
 // ─── AI commands ─────────────────────────────────────────────────────────────
