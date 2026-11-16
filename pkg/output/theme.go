@@ -86,7 +86,7 @@ func ThemeMuted(format string, a ...interface{}) {
 func ThemeHeader(text string) {
 	fmt.Println()
 	activeTheme.Header.Printf("  %s\n", text)
-	activeTheme.Muted.Printf("  %s\n", strings.Repeat(activeTheme.Separator, len(text)+2))
+	activeTheme.Muted.Printf("  %s\n", strings.Repeat(activeTheme.Separator, Width(text)+2))
 }
 
 func ThemeSection(title string) {
@@ -100,15 +100,13 @@ func ThemeBox(lines []string) {
 
 	maxLen := 0
 	for _, l := range lines {
-		if len(l) > maxLen {
-			maxLen = len(l)
-		}
+		maxLen = max(maxLen, Width(l))
 	}
 	width := maxLen + 4
 
 	activeTheme.Muted.Printf("  %s%s╮\n", activeTheme.BoxTop, strings.Repeat(activeTheme.Separator, width))
 	for _, l := range lines {
-		padded := l + strings.Repeat(" ", maxLen-len(l))
+		padded := l + strings.Repeat(" ", maxLen-Width(l))
 		activeTheme.Muted.Print("  │ ")
 		fmt.Print(padded)
 		activeTheme.Muted.Println("  │")

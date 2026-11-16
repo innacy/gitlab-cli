@@ -173,9 +173,7 @@ func (r *replState) enhanceTicketDescription(userContext string) (string, string
 	title := strings.TrimSpace(lines[0])
 	title = strings.TrimPrefix(title, "# ")
 	title = strings.TrimPrefix(title, "## ")
-	if len(title) > 72 {
-		title = strings.TrimSpace(title[:72])
-	}
+	title = strings.TrimSpace(output.Cut(title, 72))
 
 	description := ""
 	if len(lines) > 1 {

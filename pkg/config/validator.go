@@ -36,6 +36,9 @@ func Validate(cfg *AppConfig) *ValidationResult {
 	validateReview(&cfg.Review, result)
 	validateIssues(&cfg.Issues, result)
 
+	if t := cfg.CLI.Theme; t != "" && t != "default" {
+		result.Warnings = append(result.Warnings, fmt.Sprintf("cli.theme %q is not available (only \"default\"); using default", t))
+	}
 	if len(cfg.Teams) == 0 {
 		result.Warnings = append(result.Warnings, "no teams configured — project filtering will be disabled")
 	}
