@@ -84,7 +84,7 @@ func (r *Recorder) Close() error {
 }
 
 func (r *Recorder) Record(evt Event) (int64, error) {
-	now := time.Now().UTC()
+	now := time.Now()
 	var metaJSON []byte
 	if evt.Metadata != nil {
 		metaJSON, _ = json.Marshal(evt.Metadata)
@@ -96,8 +96,8 @@ func (r *Recorder) Record(evt Event) (int64, error) {
 	result, err := r.db.Exec(
 		`INSERT INTO events (timestamp, date, command, category, project, duration_ms, success, metadata)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		now.Format(time.RFC3339),
-		now.Format("2006-01-02"),
+		now.UTC().Format(time.RFC3339), // timestamp: UTC, compared by SummarySince
+		now.Format("2006-01-02"),       // date: local, so "today" matches the wall clock
 		evt.Command,
 		evt.Category,
 		evt.Project,

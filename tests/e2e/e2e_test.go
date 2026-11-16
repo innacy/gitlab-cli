@@ -329,8 +329,8 @@ func TestFailedCommandIsRecordedAsFailure(t *testing.T) {
 
 func TestStatsRejectsBadMonth(t *testing.T) {
 	gl := newFakeGitLab(t)
-	out, _ := run(t, workdir(t, gl.URL), goodToken, "stats month 2026-13")
-	mustContain(t, out, "Invalid date format")
+	out, _ := run(t, workdir(t, gl.URL), goodToken, "stats month 2026-13", "stats fortnight")
+	mustContain(t, out, "invalid date format: 2026-13", `unknown range "fortnight"`)
 }
 
 func TestStatsDashboardServesAPI(t *testing.T) {

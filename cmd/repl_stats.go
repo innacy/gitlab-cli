@@ -30,34 +30,10 @@ func (r *replState) handleStats(args []string) {
 		return
 	}
 
-	var from, to string
-	now := time.Now().UTC()
-	label := ""
-
-	switch subCmd {
-	case "week":
-		from = now.AddDate(0, 0, -7).Format("2006-01-02")
-		to = now.Format("2006-01-02")
-		label = "Last 7 Days"
-	case "month":
-		if dateArg != "" {
-			parsed, err := time.Parse("2006-01", dateArg)
-			if err != nil {
-				output.PrintError(fmt.Sprintf("Invalid date format: %s (use YYYY-MM)", dateArg))
-				return
-			}
-			from = parsed.Format("2006-01-02")
-			to = parsed.AddDate(0, 1, -1).Format("2006-01-02")
-			label = parsed.Format("January 2006")
-		} else {
-			from = now.AddDate(0, 0, -30).Format("2006-01-02")
-			to = now.Format("2006-01-02")
-			label = "Last 30 Days"
-		}
-	default:
-		from = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
-		to = now.Format("2006-01-02")
-		label = now.Format("January 2006")
+	from, to, label, err := audit.DateRange(subCmd, dateArg, time.Now())
+	if err != nil {
+		output.PrintError(err.Error())
+		return
 	}
 
 	summary, err := r.auditor.Summary(from, to)

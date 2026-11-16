@@ -67,29 +67,12 @@ func (s *Server) Start(openBrowser func(string)) (addr string, shutdown func(), 
 }
 
 func (s *Server) parseDateRange(r *http.Request) (string, string) {
-	now := time.Now().UTC()
-	rangeParam := r.URL.Query().Get("range")
-	dateParam := r.URL.Query().Get("date")
-
-	switch rangeParam {
-	case "week":
-		return now.AddDate(0, 0, -7).Format("2006-01-02"), now.Format("2006-01-02")
-	case "month":
-		if dateParam != "" {
-			if parsed, err := time.Parse("2006-01", dateParam); err == nil {
-				return parsed.Format("2006-01-02"), parsed.AddDate(0, 1, -1).Format("2006-01-02")
-			}
-		}
-		return now.AddDate(0, 0, -30).Format("2006-01-02"), now.Format("2006-01-02")
-	case "year":
-		year := r.URL.Query().Get("year")
-		if year == "" {
-			year = fmt.Sprintf("%d", now.Year())
-		}
-		return year + "-01-01", year + "-12-31"
-	default:
-		return now.AddDate(0, 0, -30).Format("2006-01-02"), now.Format("2006-01-02")
+	q := r.URL.Query()
+	from, to, _, err := DateRange(q.Get("range"), q.Get("date"), time.Now())
+	if err != nil {
+		from, to, _, _ = DateRange("month", "", time.Now())
 	}
+	return from, to
 }
 
 func (s *Server) writeJSON(w http.ResponseWriter, v interface{}) {
