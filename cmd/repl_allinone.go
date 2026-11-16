@@ -12,6 +12,7 @@ import (
 
 	"gitlab-ai/internal/models"
 	"gitlab-ai/pkg/ai"
+	"gitlab-ai/pkg/audit"
 	"gitlab-ai/pkg/output"
 	"gitlab-ai/pkg/platform"
 )
@@ -54,6 +55,7 @@ func (r *replState) createEmptyTicket(project string) (*models.Issue, error) {
 	if err != nil {
 		return nil, err
 	}
+	r.recordEffect(audit.CategoryTicketCreated)
 
 	userID := r.provider.UserID()
 	s = output.NewLoader(fmt.Sprintf(" Assigning to @%s...", r.provider.Username()))
@@ -391,7 +393,7 @@ func (r *replState) shipProcessFolder(folder string, ticketIID int, ticketURL st
 	output.PrintSuccess(fmt.Sprintf("Branch: %s → %s", branchName, targetBranch))
 	output.PrintURLOpen(mr.WebURL)
 	fmt.Println()
-	r.stats.mrsCreated++
+	r.recordEffect(audit.CategoryMRCreated)
 
 	return mr.WebURL, true
 }

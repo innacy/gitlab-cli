@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -33,7 +34,12 @@ type replState struct {
 	lastAIEventID int64
 	reviews       map[string]*reviewEntry
 	reviewOrder   []string
-	stats         sessionStats
+
+	// The command currently being dispatched, so handlers can attach AI
+	// output and side effects to its audit event.
+	curEventID int64
+	curCommand string
+	curProject string
 
 	activeTeam      string
 	projectCache    []models.ProjectInfo
@@ -53,13 +59,6 @@ type reviewEntry struct {
 	filePath   string
 	comment    string
 	reviewedAt time.Time
-}
-
-type sessionStats struct {
-	mrsReviewed  int
-	mrsCreated   int
-	filesCreated int
-	issuesViewed int
 }
 
 // ─── Auto-complete ───────────────────────────────────────────────────────────
@@ -413,6 +412,21 @@ func (r *replState) dispatch(line string) bool {
 	output.TakeWorkTime()
 
 	c := lookupCommand(name)
+	var eventID int64
+	if c != nil {
+		project := auditProject(parts[1:])
+		if r.auditor != nil && c.category != "" {
+			eventID, _ = r.auditor.Record(audit.Event{
+				Command: c.name, Category: c.category, Project: project, Success: true,
+			})
+		}
+		// Nested dispatch (intent routing) must not clobber the outer command.
+		prevID, prevCmd, prevProject := r.curEventID, r.curCommand, r.curProject
+		r.curEventID, r.curCommand, r.curProject = eventID, c.name, project
+		defer func() { r.curEventID, r.curCommand, r.curProject = prevID, prevCmd, prevProject }()
+	}
+	errorsBefore := output.ErrorCount()
+
 	switch {
 	case c != nil:
 		c.run(r, parts[1:])
@@ -427,21 +441,35 @@ func (r *replState) dispatch(line string) bool {
 		output.PrintWorked(d)
 	}
 
-	if r.auditor != nil && c != nil && c.category != "" {
-		project := ""
-		if len(parts) > 1 {
-			project = parts[1]
-		}
-		r.auditor.Record(audit.Event{
-			Command:    c.name,
-			Category:   c.category,
-			Project:    project,
-			DurationMs: time.Since(start).Milliseconds(),
-			Success:    true,
-		})
+	if eventID > 0 {
+		r.auditor.Finish(eventID, time.Since(start).Milliseconds(), output.ErrorCount() == errorsBefore)
 	}
 
 	return false
+}
+
+// auditProject picks the project a command acted on from its raw arguments:
+// the -p flag, else the first non-numeric argument.
+func auditProject(args []string) string {
+	if p, rest := parseProjectFlag(args); p != "" {
+		return p
+	} else if len(rest) > 0 {
+		if _, err := strconv.Atoi(rest[0]); err != nil {
+			return rest[0]
+		}
+	}
+	return ""
+}
+
+// recordEffect logs a side effect (file written, MR or ticket created) under
+// the command that is currently running.
+func (r *replState) recordEffect(category string) {
+	if r.auditor == nil {
+		return
+	}
+	r.auditor.Record(audit.Event{
+		Command: r.curCommand, Category: category, Project: r.curProject, Success: true,
+	})
 }
 
 // ─── Session ─────────────────────────────────────────────────────────────────
@@ -516,22 +544,29 @@ func (r *replState) startCacheLoad() {
 }
 
 func (r *replState) handleExit() {
-	if r.auditor != nil {
-		r.auditor.Close()
-	}
-
 	fmt.Println()
 	if r.provider != nil && !r.startedAt.IsZero() {
-		duration := time.Since(r.startedAt).Round(time.Second)
+		lines := []string{
+			fmt.Sprintf("Duration:        %s", time.Since(r.startedAt).Round(time.Second)),
+			fmt.Sprintf("Team:            %s", r.activeTeam),
+		}
+		// Same source as `stats`, so the two can never disagree.
+		if r.auditor != nil {
+			if s, err := r.auditor.SummarySince(r.startedAt); err == nil {
+				lines = append(lines,
+					fmt.Sprintf("Commands run:    %d (%d failed)", s.TotalEvents, s.Failed),
+					fmt.Sprintf("MRs reviewed:    %d", s.MRsReviewed),
+					fmt.Sprintf("MRs created:     %d", s.MRsCreated),
+					fmt.Sprintf("Tickets created: %d", s.TicketsCreated),
+					fmt.Sprintf("Files written:   %d", s.FilesWritten),
+				)
+			}
+		}
 		output.ThemeHeader("Session Summary")
-		output.ThemeBox([]string{
-			fmt.Sprintf("Duration:      %s", duration),
-			fmt.Sprintf("Team:          %s", r.activeTeam),
-			fmt.Sprintf("MRs reviewed:  %d", r.stats.mrsReviewed),
-			fmt.Sprintf("MRs created:   %d", r.stats.mrsCreated),
-			fmt.Sprintf("Files created: %d", r.stats.filesCreated),
-			fmt.Sprintf("Issues viewed: %d", r.stats.issuesViewed),
-		})
+		output.ThemeBox(lines)
+	}
+	if r.auditor != nil {
+		r.auditor.Close()
 	}
 	fmt.Println()
 	output.GetTheme().Muted.Println("  Goodbye.")

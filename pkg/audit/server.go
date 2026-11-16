@@ -110,6 +110,8 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 		"mrs_created":     summary.MRsCreated,
 		"mrs_reviewed":    summary.MRsReviewed,
 		"tickets_created": summary.TicketsCreated,
+		"failed":          summary.Failed,
+		"reviews_posted":  summary.ReviewsPosted,
 		"files_written":   summary.FilesWritten,
 		"from":            from,
 		"to":              to,

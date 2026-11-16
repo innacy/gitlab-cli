@@ -49,7 +49,7 @@ var (
 
 func init() {
 	commandTable = []*command{
-		{name: "mr-status", usage: "<project>", desc: "List open MRs", section: "Merge Requests", projectArg: true, run: (*replState).handleMRStatus},
+		{name: "mr-status", usage: "<project>", desc: "List open MRs", section: "Merge Requests", category: audit.CategoryRead, projectArg: true, run: (*replState).handleMRStatus},
 		{name: "mr-review", usage: "<project> [mr]", desc: "AI-powered MR review", section: "Merge Requests", category: audit.CategoryAIGeneration, projectArg: true, run: (*replState).handleMRReview},
 		{name: "mr-comment", usage: "<project> [mr]", desc: "Post review as MR comment", section: "Merge Requests", category: audit.CategoryGitLabMutation, projectArg: true, run: (*replState).handleMRComment},
 		{name: "mr-open", usage: "<project> [branch] [target]", desc: "Create a new MR", section: "Merge Requests", category: audit.CategoryGitLabMutation, projectArg: true, run: (*replState).handleMROpen},
@@ -60,13 +60,13 @@ func init() {
 		{name: "mr-update", usage: "<project> <mr>", desc: "Update MR metadata", section: "Merge Requests", category: audit.CategoryGitLabMutation, projectArg: true, run: (*replState).handleMRUpdate},
 		{name: "mr-close", usage: "<project> <mr>", desc: "Close an MR", section: "Merge Requests", category: audit.CategoryGitLabMutation, projectArg: true, run: (*replState).handleMRClose},
 		{name: "mr-reopen", usage: "<project> <mr>", desc: "Reopen a closed MR", section: "Merge Requests", category: audit.CategoryGitLabMutation, projectArg: true, run: (*replState).handleMRReopen},
-		{name: "mr-checks", usage: "<project> <mr>", desc: "Pipeline status for an MR", section: "Merge Requests", projectArg: true, run: (*replState).handleMRChecks},
+		{name: "mr-checks", usage: "<project> <mr>", desc: "Pipeline status for an MR", section: "Merge Requests", category: audit.CategoryRead, projectArg: true, run: (*replState).handleMRChecks},
 
-		{name: "pipeline", usage: "<project>", desc: "List recent pipelines", section: "Pipelines / CI", projectArg: true, run: (*replState).handlePipeline},
-		{name: "pipeline-view", usage: "<project> <id>", desc: "Pipeline details and jobs", section: "Pipelines / CI", projectArg: true, run: (*replState).handlePipelineView},
-		{name: "pipeline-logs", usage: "<project> <job-id>", desc: "Job log output", section: "Pipelines / CI", projectArg: true, run: (*replState).handlePipelineLogs},
-		{name: "pipeline-retry", usage: "<project> <id>", desc: "Retry a failed pipeline", section: "Pipelines / CI", projectArg: true, run: (*replState).handlePipelineRetry},
-		{name: "pipeline-cancel", usage: "<project> <id>", desc: "Cancel a running pipeline", section: "Pipelines / CI", projectArg: true, run: (*replState).handlePipelineCancel},
+		{name: "pipeline", usage: "<project>", desc: "List recent pipelines", section: "Pipelines / CI", category: audit.CategoryRead, projectArg: true, run: (*replState).handlePipeline},
+		{name: "pipeline-view", usage: "<project> <id>", desc: "Pipeline details and jobs", section: "Pipelines / CI", category: audit.CategoryRead, projectArg: true, run: (*replState).handlePipelineView},
+		{name: "pipeline-logs", usage: "<project> <job-id>", desc: "Job log output", section: "Pipelines / CI", category: audit.CategoryRead, projectArg: true, run: (*replState).handlePipelineLogs},
+		{name: "pipeline-retry", usage: "<project> <id>", desc: "Retry a failed pipeline", section: "Pipelines / CI", category: audit.CategoryGitLabMutation, projectArg: true, run: (*replState).handlePipelineRetry},
+		{name: "pipeline-cancel", usage: "<project> <id>", desc: "Cancel a running pipeline", section: "Pipelines / CI", category: audit.CategoryGitLabMutation, projectArg: true, run: (*replState).handlePipelineCancel},
 		{name: "pipeline-triage", usage: "<project> [id]", desc: "AI triage of a failed pipeline", section: "Pipelines / CI", category: audit.CategoryAIGeneration, projectArg: true, run: (*replState).handlePipelineTriage},
 
 		{name: "ticket-open", usage: "[project]", desc: "Create a new ticket", section: "Tickets / Issues", category: audit.CategoryGitLabMutation, projectArg: true, run: (*replState).handleTicketOpen},
@@ -74,14 +74,14 @@ func init() {
 		{name: "ticket-close", usage: "<project> <number>", desc: "Close a ticket", section: "Tickets / Issues", category: audit.CategoryGitLabMutation, projectArg: true, run: (*replState).handleTicketClose},
 		{name: "ticket-reopen", usage: "<project> <number>", desc: "Reopen a ticket", section: "Tickets / Issues", category: audit.CategoryGitLabMutation, projectArg: true, run: (*replState).handleTicketReopen},
 		{name: "ticket-update", usage: "<project> <number>", desc: "Update ticket metadata", section: "Tickets / Issues", category: audit.CategoryGitLabMutation, projectArg: true, run: (*replState).handleTicketUpdate},
-		{name: "ticket-search", usage: "<project>", desc: "Search tickets", section: "Tickets / Issues", projectArg: true, run: (*replState).handleTicketSearch},
-		{name: "tickets", desc: "Generate open tickets report", section: "Tickets / Issues", run: (*replState).handleTickets},
-		{name: "tickets-black", desc: "Generate malformed tickets report", section: "Tickets / Issues", run: (*replState).handleTicketsBlack},
+		{name: "ticket-search", usage: "<project>", desc: "Search tickets", section: "Tickets / Issues", category: audit.CategoryRead, projectArg: true, run: (*replState).handleTicketSearch},
+		{name: "tickets", desc: "Generate open tickets report", section: "Tickets / Issues", category: audit.CategoryRead, run: (*replState).handleTickets},
+		{name: "tickets-black", desc: "Generate malformed tickets report", section: "Tickets / Issues", category: audit.CategoryRead, run: (*replState).handleTicketsBlack},
 
-		{name: "list", desc: "List team projects (alias: projects)", section: "Repository", run: noArgs((*replState).handleList)},
-		{name: "diff", usage: "<project>", desc: "Compare tags or branches", section: "Repository", projectArg: true, run: (*replState).handleDiff},
+		{name: "list", desc: "List team projects (alias: projects)", section: "Repository", category: audit.CategoryRead, run: noArgs((*replState).handleList)},
+		{name: "diff", usage: "<project>", desc: "Compare tags or branches", section: "Repository", category: audit.CategoryRead, projectArg: true, run: (*replState).handleDiff},
 		{name: "branch-cleanup", usage: "<project>", desc: "Remove stale merged branches", section: "Repository", category: audit.CategoryGitLabMutation, projectArg: true, run: (*replState).handleBranchCleanup},
-		{name: "release", desc: "Check release status of all projects", section: "Repository", run: noArgs((*replState).handleRelease)},
+		{name: "release", desc: "Check release status of all projects", section: "Repository", category: audit.CategoryRead, run: noArgs((*replState).handleRelease)},
 
 		{name: "create-ticket-content", usage: "[project]", desc: "Generate ticket content from branch diff", section: "Content Generation", category: audit.CategoryAIGeneration, projectArg: true, run: (*replState).handleCreateTicketContent},
 		{name: "create-ticket-desc", usage: "[project]", desc: "Generate ticket description from linked MRs", section: "Content Generation", category: audit.CategoryAIGeneration, projectArg: true, run: (*replState).handleTicketDescribe},
