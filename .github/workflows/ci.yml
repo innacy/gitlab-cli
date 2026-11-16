@@ -41,6 +41,10 @@ jobs:
           fi
       - run: go vet ./...
       - run: go test -race -count=1 ./...
+        env:
+          # Also builds the binary the e2e suite drives with -race, so data
+          # races in the REPL fail CI (tests/e2e fails on "DATA RACE").
+          GOFLAGS: -race
       - name: build
         run: go build -o bin/gitlab-ai .
 
