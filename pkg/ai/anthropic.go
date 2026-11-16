@@ -12,12 +12,14 @@ import (
 )
 
 const (
-	anthropicAPI     = "https://api.anthropic.com/v1/messages"
+	anthropicHost    = "https://api.anthropic.com"
 	anthropicVersion = "2023-06-01"
 )
 
 // AnthropicClient calls the Anthropic Messages API directly via HTTP.
 type AnthropicClient struct {
+	BaseURL string // optional override of https://api.anthropic.com (proxies, tests)
+
 	apiKey     string
 	model      string
 	maxTokens  int
@@ -102,7 +104,7 @@ func (c *AnthropicClient) Chat(ctx context.Context, systemPrompt, userMessage st
 		return ChatResult{}, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", anthropicAPI, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, "POST", endpoint(c.BaseURL, anthropicHost, "/v1/messages"), bytes.NewReader(body))
 	if err != nil {
 		return ChatResult{}, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -148,5 +150,6 @@ func (c *AnthropicClient) Chat(ctx context.Context, systemPrompt, userMessage st
 		return ChatResult{}, fmt.Errorf("empty response from Anthropic API")
 	}
 
-	return ChatResult{Text: text, Model: c.model, DurationMs: time.Since(start).Milliseconds()}, nil
+	return ChatResult{Text: text, Model: c.model, DurationMs: time.Since(start).Milliseconds(),
+		InputTokens: msgResp.Usage.InputTokens, OutputTokens: msgResp.Usage.OutputTokens}, nil
 }

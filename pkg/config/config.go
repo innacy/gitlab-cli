@@ -65,6 +65,7 @@ type AIConfig struct {
 
 // NvidiaConfig holds NVIDIA NIM-specific settings.
 type NvidiaConfig struct {
+	BaseURL         string  `mapstructure:"base_url" yaml:"base_url"` // optional API host override (proxy, tests)
 	APIKey          string  `mapstructure:"api_key" yaml:"api_key"`
 	APIKeyEnv       string  `mapstructure:"api_key_env" yaml:"api_key_env"`
 	Model           string  `mapstructure:"model" yaml:"model"`
@@ -78,6 +79,7 @@ type NvidiaConfig struct {
 
 // GeminiConfig holds Google Gemini-specific settings.
 type GeminiConfig struct {
+	BaseURL       string `mapstructure:"base_url" yaml:"base_url"` // optional API host override (proxy, tests)
 	APIKey        string `mapstructure:"api_key" yaml:"api_key"`
 	APIKeyEnv     string `mapstructure:"api_key_env" yaml:"api_key_env"`
 	Model         string `mapstructure:"model" yaml:"model"`
@@ -87,6 +89,7 @@ type GeminiConfig struct {
 
 // AnthropicConfig holds Anthropic-specific settings.
 type AnthropicConfig struct {
+	BaseURL       string  `mapstructure:"base_url" yaml:"base_url"` // optional API host override (proxy, tests)
 	APIKey        string  `mapstructure:"api_key" yaml:"api_key"`
 	APIKeyEnv     string  `mapstructure:"api_key_env" yaml:"api_key_env"`
 	Model         string  `mapstructure:"model" yaml:"model"`

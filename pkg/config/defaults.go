@@ -10,6 +10,7 @@ func setDefaultsOn(v *viper.Viper) {
 	for _, p := range []string{"anthropic", "gemini", "nvidia"} {
 		v.SetDefault("ai."+p+".api_key", "")
 		v.SetDefault("ai."+p+".fallback_model", "")
+		v.SetDefault("ai."+p+".base_url", "")
 	}
 
 	v.SetDefault("platform", "gitlab")

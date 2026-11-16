@@ -37,5 +37,7 @@ func migrate(db *sql.DB) error {
 		return err
 	}
 	db.Exec("ALTER TABLE ai_outputs ADD COLUMN duration_ms INTEGER")
+	db.Exec("ALTER TABLE ai_outputs ADD COLUMN input_tokens INTEGER")
+	db.Exec("ALTER TABLE ai_outputs ADD COLUMN output_tokens INTEGER")
 	return nil
 }

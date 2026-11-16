@@ -39,6 +39,9 @@ type ModelPerformanceRow struct {
 	MinMs   int64
 	MaxMs   int64
 	TotalMs int64
+
+	InputTokens  int64
+	OutputTokens int64
 }
 
 type AccuracyResult struct {
@@ -82,7 +85,7 @@ func (r *Recorder) summary(where string, args ...any) (*SummaryResult, error) {
 
 func (r *Recorder) Heatmap(from, to string) ([]HeatmapDay, error) {
 	rows, err := r.db.Query(
-		"SELECT date, COUNT(*) FROM events WHERE date >= ? AND date <= ? GROUP BY date ORDER BY date",
+		"SELECT date, COUNT(*) FROM events WHERE date >= ? AND date <= ? AND "+isCommand+" GROUP BY date ORDER BY date",
 		from, to,
 	)
 	if err != nil {
@@ -163,7 +166,7 @@ func (r *Recorder) AccuracyStats(from, to string) (*AccuracyResult, error) {
 
 func (r *Recorder) BusiestDays(from, to string, limit int) ([]HeatmapDay, error) {
 	rows, err := r.db.Query(
-		"SELECT date, COUNT(*) as cnt FROM events WHERE date >= ? AND date <= ? GROUP BY date ORDER BY cnt DESC LIMIT ?",
+		"SELECT date, COUNT(*) as cnt FROM events WHERE date >= ? AND date <= ? AND "+isCommand+" GROUP BY date ORDER BY cnt DESC LIMIT ?",
 		from, to, limit,
 	)
 	if err != nil {
@@ -214,10 +217,12 @@ func (r *Recorder) ModelPerformance(from, to string) ([]ModelPerformanceRow, err
 		        COALESCE(AVG(a.duration_ms), 0),
 		        COALESCE(MIN(a.duration_ms), 0),
 		        COALESCE(MAX(a.duration_ms), 0),
-		        COALESCE(SUM(a.duration_ms), 0)
+		        COALESCE(SUM(a.duration_ms), 0),
+		        COALESCE(SUM(a.input_tokens), 0),
+		        COALESCE(SUM(a.output_tokens), 0)
 		 FROM ai_outputs a
 		 JOIN events e ON a.event_id = e.id
-		 WHERE e.date >= ? AND e.date <= ? AND a.duration_ms > 0
+		 WHERE e.date >= ? AND e.date <= ? AND a.duration_ms IS NOT NULL
 		 GROUP BY a.model
 		 ORDER BY AVG(a.duration_ms) ASC`,
 		from, to,
@@ -230,7 +235,7 @@ func (r *Recorder) ModelPerformance(from, to string) ([]ModelPerformanceRow, err
 	var result []ModelPerformanceRow
 	for rows.Next() {
 		var m ModelPerformanceRow
-		if err := rows.Scan(&m.Model, &m.Count, &m.AvgMs, &m.MinMs, &m.MaxMs, &m.TotalMs); err != nil {
+		if err := rows.Scan(&m.Model, &m.Count, &m.AvgMs, &m.MinMs, &m.MaxMs, &m.TotalMs, &m.InputTokens, &m.OutputTokens); err != nil {
 			return nil, err
 		}
 		result = append(result, m)
