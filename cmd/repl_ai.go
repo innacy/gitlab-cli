@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -19,17 +18,14 @@ func (r *replState) ensureAI() error {
 		return nil
 	}
 
-	provider := strings.ToLower(r.cfg.AI.Provider)
+	resolved := r.cfg.AI.Resolve()
+	apiKey := resolved.APIKey
 
 	timeout := time.Duration(r.cfg.AI.TimeoutSeconds) * time.Second
 
-	switch provider {
-	case "anthropic", "claude", "":
+	switch resolved.Provider {
+	case "anthropic":
 		cfg := r.cfg.AI.Anthropic
-		apiKey := cfg.APIKey
-		if apiKey == "" && cfg.APIKeyEnv != "" {
-			apiKey = os.Getenv(cfg.APIKeyEnv)
-		}
 		if apiKey == "" {
 			return fmt.Errorf("Anthropic API key not configured.\n  Set 'ai.anthropic.api_key' in config.yaml\n  Or export %s environment variable.\n  Get your key at: https://console.anthropic.com/settings/keys", cfg.APIKeyEnv)
 		}
@@ -41,12 +37,8 @@ func (r *replState) ensureAI() error {
 			r.aiClient = primary
 		}
 
-	case "gemini", "google":
+	case "gemini":
 		cfg := r.cfg.AI.Gemini
-		apiKey := cfg.APIKey
-		if apiKey == "" && cfg.APIKeyEnv != "" {
-			apiKey = os.Getenv(cfg.APIKeyEnv)
-		}
 		if apiKey == "" {
 			return fmt.Errorf("Gemini API key not configured.\n  Set 'ai.gemini.api_key' in config.yaml\n  Or export %s environment variable.\n  Get your key at: https://aistudio.google.com/apikey", cfg.APIKeyEnv)
 		}
@@ -60,10 +52,6 @@ func (r *replState) ensureAI() error {
 
 	case "nvidia":
 		cfg := r.cfg.AI.Nvidia
-		apiKey := cfg.APIKey
-		if apiKey == "" && cfg.APIKeyEnv != "" {
-			apiKey = os.Getenv(cfg.APIKeyEnv)
-		}
 		if apiKey == "" {
 			return fmt.Errorf("NVIDIA API key not configured.\n  Set 'ai.nvidia.api_key' in config.yaml\n  Or export %s environment variable.\n  Get your key at: https://build.nvidia.com/", cfg.APIKeyEnv)
 		}
