@@ -107,7 +107,7 @@ func TestFetchProjectCache_UsesLimitedFetch(t *testing.T) {
 	r := newTestReplState(repos)
 	r.cacheReady = make(chan struct{})
 
-	r.fetchProjectCache()
+	r.fetchProjectCache(r.cacheReady)
 
 	if repos.listRecentProjectsCalls != 1 {
 		t.Errorf("expected ListRecentProjects to be called once, got %d", repos.listRecentProjectsCalls)
@@ -133,7 +133,7 @@ func TestEnsureFullCache_FetchesAllAfterLimitedStartup(t *testing.T) {
 	r := newTestReplState(repos)
 	r.cacheReady = make(chan struct{})
 
-	r.fetchProjectCache()
+	r.fetchProjectCache(r.cacheReady)
 
 	r.cacheMu.RLock()
 	countBefore := len(r.projectCache)
@@ -182,7 +182,7 @@ func TestWaitForCache_ReturnsLimitedProjectsQuickly(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		r.fetchProjectCache()
+		r.fetchProjectCache(r.cacheReady)
 	}()
 
 	projects := r.waitForCache()
