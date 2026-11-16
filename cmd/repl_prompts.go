@@ -149,7 +149,7 @@ func (r *replState) fallbackChoice(title string, options []string) int {
 	fmt.Println()
 
 	r.rl.SetPrompt("choice> ")
-	defer r.rl.SetPrompt("git-agent> ")
+	defer r.rl.SetPrompt(r.prompt())
 
 	line, err := r.rl.Readline()
 	r.resetIdle()
@@ -220,7 +220,7 @@ func (r *replState) promptForProject(title string) string {
 		color.New(color.FgCyan, color.Bold).Println("  Enter project name or path (Tab to auto-complete):")
 
 		r.rl.SetPrompt("project> ")
-		defer r.rl.SetPrompt("git-agent> ")
+		defer r.rl.SetPrompt(r.prompt())
 
 		line, err := r.rl.Readline()
 		r.resetIdle()
@@ -234,7 +234,7 @@ func (r *replState) promptForProject(title string) string {
 
 func (r *replState) promptForNumber(label string) int {
 	r.rl.SetPrompt(fmt.Sprintf("%s> ", label))
-	defer r.rl.SetPrompt("git-agent> ")
+	defer r.rl.SetPrompt(r.prompt())
 
 	line, err := r.rl.Readline()
 	r.resetIdle()
@@ -389,7 +389,7 @@ func (r *replState) promptForYesNoSafe(question string) bool {
 
 func (r *replState) promptForText(label string) string {
 	r.rl.SetPrompt(fmt.Sprintf("%s> ", label))
-	defer r.rl.SetPrompt("git-agent> ")
+	defer r.rl.SetPrompt(r.prompt())
 
 	line, err := r.rl.Readline()
 	r.resetIdle()

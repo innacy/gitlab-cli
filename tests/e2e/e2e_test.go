@@ -150,7 +150,17 @@ func run(t *testing.T, dir, token string, commands ...string) (string, int) {
 		cmd.Process.Kill()
 		t.Fatalf("git-agent hung; output so far:\n%s", out.String())
 	}
+	failOnRace(t, out.String())
 	return out.String(), cmd.ProcessState.ExitCode()
+}
+
+// failOnRace catches data races in the binary when the suite runs with
+// GOFLAGS=-race (TestMain's go build inherits it).
+func failOnRace(t *testing.T, out string) {
+	t.Helper()
+	if strings.Contains(out, "WARNING: DATA RACE") {
+		t.Errorf("data race in git-agent:\n%s", out)
+	}
 }
 
 func mustContain(t *testing.T, out string, wants ...string) {
@@ -246,6 +256,57 @@ func TestConfigFlag(t *testing.T) {
 	cmd.Stdin = strings.NewReader("exit\n")
 	out, _ := cmd.CombinedOutput()
 	mustContain(t, string(out), "Authenticated as Test User")
+}
+
+func TestEnvironmentProfiles(t *testing.T) {
+	glA, glB := newFakeGitLab(t), newFakeGitLab(t)
+	dir := workdir(t, "")
+	cfg := fmt.Sprintf(`gitlab:
+  base_url: %q
+teams:
+  - team
+environments:
+  a:
+    gitlab:
+      base_url: %q
+  b:
+    gitlab:
+      base_url: %q
+`, glA.URL, glA.URL, glB.URL)
+	os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(cfg), 0o600)
+
+	cmd := agentCmd(dir, goodToken)
+	cmd.Args = append(cmd.Args, "--env", "b")
+	cmd.Stdin = strings.NewReader("switch-env nope\nswitch-env a\nconfig\nexit\n")
+	raw, _ := cmd.CombinedOutput()
+	out := string(raw)
+	failOnRace(t, out)
+
+	mustContain(t, out,
+		"Environment: b",
+		`unknown environment "nope" (configured: a, b)`,
+		"Switched environment: b → a",
+		"Environment:    a (available: a, b)",
+	)
+	if !glB.called("GET /user") || !glA.called("GET /user") {
+		t.Errorf("expected auth against both servers; A=%v B=%v", glA.calls, glB.calls)
+	}
+	// The session after the switch must point at A.
+	if i := strings.Index(out, "Switched environment"); !strings.Contains(out[i:], glA.URL) {
+		t.Errorf("after switch, output does not show %s", glA.URL)
+	}
+}
+
+func TestUnknownEnvFlagFailsFast(t *testing.T) {
+	gl := newFakeGitLab(t)
+	cmd := agentCmd(workdir(t, gl.URL), goodToken)
+	cmd.Args = append(cmd.Args, "--env", "prod")
+	cmd.Stdin = strings.NewReader("exit\n")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Error("expected non-zero exit for unknown --env")
+	}
+	mustContain(t, string(out), `unknown environment "prod"`)
 }
 
 func TestStartupAuthenticates(t *testing.T) {

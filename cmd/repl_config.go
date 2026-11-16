@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"gitlab-ai/pkg/config"
 	"gitlab-ai/pkg/output"
 	"gitlab-ai/pkg/platform"
 )
@@ -21,6 +22,11 @@ func (r *replState) handleConfig() {
 		p = "gitlab"
 	}
 	fmt.Println(p)
+
+	if len(r.cfg.Environments) > 0 {
+		theme.Primary.Print("  Environment:    ")
+		fmt.Printf("%s (available: %s)\n", orNone(r.cfg.Environment), strings.Join(r.cfg.EnvironmentNames(), ", "))
+	}
 
 	theme.Primary.Print("  GitLab URL:     ")
 	fmt.Println(r.cfg.GitLab.BaseURL)
@@ -78,7 +84,11 @@ func (r *replState) handleConfig() {
 
 	supported := platform.SupportedPlatforms()
 	theme.Muted.Printf("  Supported platforms: %s\n", strings.Join(supported, ", "))
-	theme.Muted.Println("  Config: config.yaml (+ env var overrides)")
+	cfgFile := r.cfg.ConfigFile
+	if cfgFile == "" {
+		cfgFile = "(none found — defaults only)"
+	}
+	theme.Muted.Printf("  Config file:         %s (+ GITLAB_AI_* env overrides)\n", cfgFile)
 
 	if r.provider != nil {
 		theme.Muted.Printf("  Active session:      %s (@%s)\n", r.provider.Name(), r.provider.Username())
@@ -157,15 +167,10 @@ func (r *replState) handleSwitchTeam() {
 
 func (r *replState) switchTeam(name string) {
 	prev := r.activeTeam
-	r.activeTeam = name
-
-	r.cacheMu.Lock()
-	r.projectCache = nil
-	r.lastRefreshTime = time.Time{}
-	r.cacheMu.Unlock()
-
+	r.resetCache(name)
 	r.startCacheLoad()
 
+	r.rl.SetPrompt(r.prompt())
 	output.PrintSuccess(fmt.Sprintf("Switched team: %s → %s", prev, name))
 
 	pf := r.cfg.ActiveParentFolder(name)
@@ -173,4 +178,77 @@ func (r *replState) switchTeam(name string) {
 		output.PrintSuccess(fmt.Sprintf("Parent folder: %s", pf))
 	}
 	fmt.Println()
+}
+
+// ─── Switch Environment ──────────────────────────────────────────────────────
+
+func (r *replState) handleSwitchEnv(args []string) {
+	names := r.cfg.EnvironmentNames()
+	if len(names) == 0 {
+		output.PrintWarning("No environments configured. Add an 'environments:' section to config.yaml.")
+		return
+	}
+
+	target := ""
+	if len(args) > 0 {
+		target = strings.ToLower(args[0])
+	} else {
+		options := make([]string, len(names))
+		for i, n := range names {
+			options[i] = n
+			if n == r.cfg.Environment {
+				options[i] += "  ← current"
+			}
+		}
+		choice := r.promptForChoice("Switch to environment", options)
+		if choice < 0 {
+			return
+		}
+		target = names[choice]
+	}
+	if target == r.cfg.Environment {
+		output.PrintWarning(fmt.Sprintf("Already on environment '%s'", target))
+		return
+	}
+
+	cfg, err := config.LoadWith(r.cfg.ConfigFile, target)
+	if err != nil {
+		output.PrintError(err.Error())
+		return
+	}
+	if res := config.Validate(cfg); len(res.Errors) > 0 {
+		output.PrintError(fmt.Sprintf("Environment '%s' is invalid: %s", target, strings.Join(res.Errors, "; ")))
+		return
+	}
+
+	prev := r.cfg.Environment
+	r.cfg = cfg
+	// Everything derived from the old environment is stale. The provider is
+	// replaced by connect, never set to nil, because a background cache load
+	// from the old session may still be running.
+	r.aiClient = nil
+	r.resetCache("")
+
+	output.PrintSuccess(fmt.Sprintf("Switched environment: %s → %s", orNone(prev), target))
+	r.connect()
+	r.rl.SetPrompt(r.prompt())
+}
+
+// resetCache sets the active team, empties the project cache and invalidates
+// in-flight loads. activeTeam is written under cacheMu because background
+// loads read it (filterByTeam) while holding that lock.
+func (r *replState) resetCache(team string) {
+	r.cacheMu.Lock()
+	r.activeTeam = team
+	r.projectCache = nil
+	r.lastRefreshTime = time.Time{}
+	r.cacheGen++
+	r.cacheMu.Unlock()
+}
+
+func orNone(s string) string {
+	if s == "" {
+		return "(base)"
+	}
+	return s
 }

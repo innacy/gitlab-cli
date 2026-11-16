@@ -100,6 +100,32 @@ teams:
   - "my-team"
 ```
 
+### Environments
+
+Keep several setups (e.g. work and personal GitLab) in one file. Each entry
+under `environments:` is an overlay: any keys it sets replace the base config,
+everything else is inherited.
+
+```yaml
+gitlab:
+  base_url: "https://gitlab.work.example/"
+teams: ["cnips"]
+
+default_environment: work        # or pass --env, or GITLAB_AI_DEFAULT_ENVIRONMENT
+environments:
+  work: {}
+  personal:
+    gitlab:
+      base_url: "https://gitlab.com/"
+      token_env: PERSONAL_GITLAB_TOKEN
+    ai:
+      provider: gemini
+    teams: ["me"]
+```
+
+Start with `./bin/gitlab-ai --env personal`, or run `switch-env` inside the REPL.
+The prompt shows the active environment and team: `git-agent[personal/me]>`.
+
 ### AI providers
 
 | Provider | `provider` value | Key env var | Models |
@@ -208,6 +234,7 @@ The REPL starts immediately. Type `start` to begin a session, `help` to see all 
 |---------|-------------|
 | `start` | Begin a session (fetches projects in background) |
 | `switch-team` | Switch the active team |
+| `switch-env [name]` | Switch environment profile (reconnects) |
 | `config` | Show current configuration |
 | `help` | Print command reference |
 | `exit` | End session |

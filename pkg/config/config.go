@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 
 	"github.com/mitchellh/mapstructure"
@@ -29,9 +30,19 @@ type AppConfig struct {
 	Projects        []string              `mapstructure:"projects" yaml:"projects"`
 	IgnoredProjects []string              `mapstructure:"ignored_projects" yaml:"ignored_projects"`
 
+	// Environments are named overlays (any subset of the keys above) merged
+	// over the base config; DefaultEnvironment picks one when --env is unset.
+	Environments       map[string]interface{} `mapstructure:"environments" yaml:"environments"`
+	DefaultEnvironment string                 `mapstructure:"default_environment" yaml:"default_environment"`
+
 	// ConfigFile is the config file that was loaded ("" when none was found).
 	ConfigFile string `mapstructure:"-" yaml:"-"`
+	// Environment is the active environment ("" when none).
+	Environment string `mapstructure:"-" yaml:"-"`
 }
+
+// EnvironmentNames returns the configured environment names, sorted.
+func (c *AppConfig) EnvironmentNames() []string { return sortedKeys(c.Environments) }
 
 // GitLabConfig holds GitLab connection settings.
 type GitLabConfig struct {
@@ -206,19 +217,22 @@ func (c *AppConfig) ActiveIgnoredProjects(teamName string) []string {
 }
 
 // Load reads configuration from YAML file and environment variables.
-func Load() (*AppConfig, error) {
-	v := viper.New()
-	return loadWithViper(v, "")
-}
+func Load() (*AppConfig, error) { return LoadWith("", "") }
 
 // LoadFrom reads configuration from a specific YAML file path.
-func LoadFrom(path string) (*AppConfig, error) {
+func LoadFrom(path string) (*AppConfig, error) { return LoadWith(path, "") }
+
+// LoadWith loads the config at path (searched for when "") with the named
+// environment applied ("" means default_environment, if set).
+func LoadWith(path, env string) (*AppConfig, error) {
 	v := viper.New()
-	v.SetConfigFile(path)
-	return loadWithViper(v, path)
+	if path != "" {
+		v.SetConfigFile(path)
+	}
+	return loadWithViper(v, path, env)
 }
 
-func loadWithViper(v *viper.Viper, path string) (*AppConfig, error) {
+func loadWithViper(v *viper.Viper, path, env string) (*AppConfig, error) {
 	v.SetConfigType("yaml")
 
 	if path == "" {
@@ -241,6 +255,21 @@ func loadWithViper(v *viper.Viper, path string) (*AppConfig, error) {
 		}
 	}
 
+	if env == "" {
+		env = v.GetString("default_environment")
+	}
+	if env != "" {
+		env = strings.ToLower(env) // viper lowercases map keys
+		overlay, ok := v.Get("environments." + env).(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("unknown environment %q (configured: %s)", env,
+				strings.Join(sortedKeys(v.GetStringMap("environments")), ", "))
+		}
+		if err := v.MergeConfigMap(overlay); err != nil {
+			return nil, fmt.Errorf("apply environment %q: %w", env, err)
+		}
+	}
+
 	cfg := &AppConfig{}
 	if err := v.Unmarshal(cfg, viper.DecodeHook(
 		mapstructure.ComposeDecodeHookFunc(
@@ -254,6 +283,7 @@ func loadWithViper(v *viper.Viper, path string) (*AppConfig, error) {
 
 	cfg.normalizeTeams(v)
 	cfg.ConfigFile = v.ConfigFileUsed()
+	cfg.Environment = env
 	cfg.resolveOutputDirs()
 
 	if err := cfg.EnsureOutputDirs(); err != nil {
@@ -327,6 +357,15 @@ func (c *AppConfig) normalizeTeams(v *viper.Viper) {
 		}
 	}
 	c.Teams = teams
+}
+
+func sortedKeys(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // resolveOutputDirs makes relative output directories relative to the config
