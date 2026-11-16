@@ -100,80 +100,19 @@ func (r *replState) showHelp() {
 	theme.Header.Println("  git-agent — Command Reference")
 	fmt.Println()
 
-	printSection := func(title string, cmds []helpCmd) {
-		theme.Primary.Printf("  %s\n", title)
-		for _, c := range cmds {
-			fmt.Printf("    %-36s %s\n", c.name, c.desc)
+	for _, section := range sectionOrder {
+		theme.Primary.Printf("  %s\n", section)
+		for _, c := range commandTable {
+			if c.section == section {
+				fmt.Printf("    %-40s %s\n", c.synopsis(), c.desc)
+			}
 		}
 		fmt.Println()
 	}
 
-	printSection("Merge Requests", []helpCmd{
-		{"mr-status <project>", "List open MRs"},
-		{"mr-review <project> [mr]", "AI-powered MR review"},
-		{"mr-comment <project> [mr]", "Post review as MR comment"},
-		{"mr-open <project> [branch] [target]", "Create a new MR"},
-		{"mr-merge <project> <mr>", "Merge an MR"},
-		{"mr-approve <project> <mr>", "Approve an MR"},
-		{"mr-unapprove <project> <mr>", "Remove approval"},
-		{"mr-rebase <project> <mr>", "Rebase source branch"},
-		{"mr-update <project> <mr>", "Update MR metadata"},
-		{"mr-close <project> <mr>", "Close an MR"},
-		{"mr-reopen <project> <mr>", "Reopen a closed MR"},
-		{"mr-checks <project> <mr>", "Pipeline status for MR"},
-	})
-
-	printSection("Pipelines / CI", []helpCmd{
-		{"pipeline <project>", "List recent pipelines"},
-		{"pipeline-view <project> <id>", "Pipeline details and jobs"},
-		{"pipeline-logs <project> <job-id>", "Job log output"},
-		{"pipeline-retry <project> <id>", "Retry failed pipeline"},
-		{"pipeline-cancel <project> <id>", "Cancel running pipeline"},
-	})
-
-	printSection("Tickets / Issues", []helpCmd{
-		{"ticket-open [project]", "Create a new ticket"},
-		{"ticket-open-empty", "Quick-create empty ticket (assigned to you)"},
-		{"ticket-close <project> <number>", "Close a ticket"},
-		{"ticket-reopen <project> <number>", "Reopen a ticket"},
-		{"ticket-update <project> <number>", "Update ticket metadata"},
-		{"ticket-search <project>", "Search tickets"},
-		{"tickets", "Generate tickets report"},
-	})
-
-	printSection("Repository", []helpCmd{
-		{"list / projects", "List team projects"},
-		{"diff <project>", "Compare tags or branches"},
-		{"branch-cleanup <project>", "Remove stale branches"},
-		{"release", "Check release status"},
-	})
-
-	printSection("Content Generation", []helpCmd{
-		{"create-ticket-content [project]", "Generate ticket content from diff"},
-		{"create-ticket-desc [project]", "Generate description from linked MRs"},
-		{"create-epic-content [project]", "Generate epic content from diff"},
-	})
-
-	printSection("Workflow", []helpCmd{
-		{"ship", "Full flow: ticket → multi-select folders → commit → push → MR → update ticket"},
-	})
-
-	printSection("Session", []helpCmd{
-		{"start", "Start session"},
-		{"switch-team", "Switch active team"},
-		{"config", "Show current configuration"},
-		{"help", "Show this help"},
-		{"exit", "End session"},
-	})
-
 	theme.Muted.Println("  Any unrecognized input is sent to AI as a question.")
 	theme.Muted.Println("  Tab = auto-complete | Up/Down = history | Ctrl+R = search history")
 	fmt.Println()
-}
-
-type helpCmd struct {
-	name string
-	desc string
 }
 
 func boolStr(b bool) string {
