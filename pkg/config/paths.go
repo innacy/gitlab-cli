@@ -27,7 +27,10 @@ func AuditDir() (dir, notice string) {
 	dir = filepath.Join(Dir(), "audit")
 	const legacy = ".git-agent/audit"
 	legacyDB := filepath.Join(legacy, "audit.db")
-	if _, err := os.Stat(legacyDB); err != nil {
+	// The legacy path is relative to the cwd, which may be a repo someone else
+	// controls. Only adopt a plain file the user owns and nobody else can write.
+	fi, err := os.Lstat(legacyDB)
+	if err != nil || !fi.Mode().IsRegular() || fi.Mode().Perm()&0o022 != 0 || !ownedByCurrentUser(fi) {
 		return dir, ""
 	}
 	if abs, _ := filepath.Abs(legacy); abs == dir {
@@ -37,7 +40,9 @@ func AuditDir() (dir, notice string) {
 		return dir, "" // already migrated from another checkout; leave the old one alone
 	}
 	if err := os.MkdirAll(dir, 0o700); err == nil {
-		if err := os.Rename(legacyDB, filepath.Join(dir, "audit.db")); err == nil {
+		target := filepath.Join(dir, "audit.db")
+		if err := os.Rename(legacyDB, target); err == nil {
+			os.Chmod(target, 0o600)
 			return dir, fmt.Sprintf("Moved audit trail from %s to %s", legacy, dir)
 		}
 	}

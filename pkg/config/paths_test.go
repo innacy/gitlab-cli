@@ -66,6 +66,9 @@ func TestAuditDirMigratesLegacyDB(t *testing.T) {
 	if b, _ := os.ReadFile(filepath.Join(want, "audit.db")); string(b) != "db" {
 		t.Error("legacy DB was not moved")
 	}
+	if fi, _ := os.Stat(filepath.Join(want, "audit.db")); fi.Mode().Perm() != 0o600 {
+		t.Errorf("migrated DB mode = %o, want 600", fi.Mode().Perm())
+	}
 
 	// Second call: nothing left to migrate.
 	if dir, notice = AuditDir(); dir != want || notice != "" {
@@ -88,5 +91,26 @@ func TestAuditDirKeepsLegacyWhenTargetExists(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(".git-agent/audit/audit.db"); string(b) != "old" {
 		t.Error("legacy DB must not be touched when a newer one exists")
+	}
+}
+
+func TestAuditDirRefusesUntrustedLegacyDB(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	t.Chdir(t.TempDir())
+	os.MkdirAll(".git-agent/audit", 0o755)
+	target := filepath.Join(t.TempDir(), "elsewhere.db")
+	os.WriteFile(target, []byte("x"), 0o600)
+
+	os.Symlink(target, ".git-agent/audit/audit.db")
+	if _, notice := AuditDir(); notice != "" {
+		t.Error("migrated a symlink")
+	}
+
+	os.Remove(".git-agent/audit/audit.db")
+	os.WriteFile(".git-agent/audit/audit.db", []byte("x"), 0o600)
+	os.Chmod(".git-agent/audit/audit.db", 0o666)
+	if _, notice := AuditDir(); notice != "" {
+		t.Error("migrated a world-writable file")
 	}
 }
