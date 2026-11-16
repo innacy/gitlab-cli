@@ -18,3 +18,12 @@ func TestAuditProject(t *testing.T) {
 		t.Errorf("auditProject(nil) = %q", got)
 	}
 }
+
+func TestMask(t *testing.T) {
+	if got := mask("glpat-abcdefgh1234"); got != "****1234" {
+		t.Errorf("mask = %q", got)
+	}
+	if got := mask("short"); got != "****" {
+		t.Errorf("mask(short) = %q", got)
+	}
+}

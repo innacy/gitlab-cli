@@ -234,6 +234,7 @@ The REPL starts immediately. Type `start` to begin a session, `help` to see all 
 |---------|-------------|
 | `start` | Begin a session (fetches projects in background) |
 | `switch-team` | Switch the active team |
+| `doctor` | Show where settings come from; check GitLab access and AI key |
 | `switch-env [name]` | Switch environment profile (reconnects) |
 | `config` | Show current configuration |
 | `help` | Print command reference |

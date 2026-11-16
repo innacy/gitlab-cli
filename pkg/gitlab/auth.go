@@ -41,35 +41,35 @@ func Authenticate(cfg *config.GitLabConfig) (*gogitlab.Client, error) {
 	return client, nil
 }
 
-// getToken retrieves the GitLab API token using the following priority:
-//  1. GITLAB_TOKEN (or custom env var from gitlab.token_env)
-//  2. gitlab.token in config.yaml
-//  3. ~/.netrc entry for the configured host
 func getToken(cfg *config.GitLabConfig) string {
+	token, _ := TokenSource(cfg)
+	return token
+}
+
+// TokenSource returns the GitLab API token and where it came from, using
+// this priority:
+//  1. the env var named by gitlab.token_env (default GITLAB_TOKEN)
+//  2. GITLAB_TOKEN
+//  3. gitlab.token in config.yaml
+//  4. ~/.netrc entry for the configured host
+func TokenSource(cfg *config.GitLabConfig) (token, source string) {
 	if envName := cfg.TokenEnv; envName != "" {
 		if token := os.Getenv(envName); token != "" {
-			utils.Debugf("Using GitLab token from env: %s", envName)
-			return token
+			return token, "env " + envName
 		}
 	}
 	if token := os.Getenv("GITLAB_TOKEN"); token != "" {
-		utils.Debugf("Using GitLab token from env: GITLAB_TOKEN")
-		return token
+		return token, "env GITLAB_TOKEN"
 	}
-
 	if cfg.Token != "" {
-		utils.Debugf("Using GitLab token from config file")
-		return cfg.Token
+		return cfg.Token, "config"
 	}
-
 	entry, err := utils.FindNetrcEntry(cfg.BaseURL)
 	if err != nil {
 		utils.Debugf("Failed to read .netrc for %s: %v", cfg.BaseURL, err)
-		return ""
+		return "", ""
 	}
-
-	utils.Debugf("Using .netrc credentials for %s", cfg.BaseURL)
-	return entry.Password
+	return entry.Password, "~/.netrc"
 }
 
 // GetCurrentUser fetches the current authenticated user info.
