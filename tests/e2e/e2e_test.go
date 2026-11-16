@@ -404,7 +404,7 @@ func TestHelpConfigAndRenamedCommands(t *testing.T) {
 	mustContain(t, out,
 		"git-agent — Command Reference",
 		"pipeline-triage <project> [id]",
-		"stats [week|month [YYYY-MM]|dashboard]",
+		"stats [today|week|month [YYYY-MM]|year [YYYY]|dashboard|export csv|json]",
 		"switch-team",
 		"Current Configuration",
 		gl.URL,
@@ -439,6 +439,39 @@ func TestFailedCommandIsRecordedAsFailure(t *testing.T) {
 		"Failed to approve MR",
 		"Commands run:    3 (1 failed)", // session summary, read from the audit DB
 	)
+}
+
+func TestStatsBreakdownAndExport(t *testing.T) {
+	gl := newFakeGitLab(t)
+	dir := workdir(t, gl.URL)
+	out, _ := run(t, dir, goodToken,
+		"mr-approve team/backend 7", "mr-approve team/backend 8", "mr-status team/backend",
+		"stats today", "stats export csv today", "stats export json", "stats export xml")
+	mustContain(t, out,
+		"Today",
+		"Commands run:     3  (1 failed, 66% success)",
+		"Top Commands:", "mr-approve                2  (1 failed)",
+		"Top Projects:", "team/backend",
+		"Exported 3 events",
+		"Usage: stats export csv|json",
+	)
+	today := time.Now().Format("2006-01-02")
+	csvData, err := os.ReadFile(filepath.Join(dir, ".data", "stats_"+today+"_"+today+".csv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lines := strings.Count(string(csvData), "\n"); lines != 4 || !strings.Contains(string(csvData), "mr-approve,gitlab_mutation,team/backend") {
+		t.Errorf("csv export (%d lines):\n%s", lines, csvData)
+	}
+	matches, _ := filepath.Glob(filepath.Join(dir, ".data", "stats_*.json"))
+	if len(matches) != 1 {
+		t.Fatalf("json export files: %v", matches)
+	}
+	var events []map[string]any
+	data, _ := os.ReadFile(matches[0])
+	if err := json.Unmarshal(data, &events); err != nil || len(events) != 3 {
+		t.Errorf("json export: %v, %d events", err, len(events))
+	}
 }
 
 func TestStatsRejectsBadMonth(t *testing.T) {

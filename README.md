@@ -225,7 +225,8 @@ The REPL starts immediately. Type `start` to begin a session, `help` to see all 
 
 | Command | Description |
 |---------|-------------|
-| `stats [week\|month [YYYY-MM]]` | Activity summary from the local audit trail |
+| `stats [today\|week\|month [YYYY-MM]\|year [YYYY]]` | Activity summary: success rate, trend, top commands and projects |
+| `stats export csv\|json [range]` | Export raw events to `other.directory` |
 | `stats dashboard` | Open the web dashboard |
 
 ### Session

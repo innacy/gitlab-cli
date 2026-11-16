@@ -17,6 +17,9 @@ func TestDateRange(t *testing.T) {
 		{"month", "", "2026-10-18", "2026-11-16"},
 		{"", "", "2026-10-18", "2026-11-16"},
 		{"month", "2026-02", "2026-02-01", "2026-02-28"},
+		{"today", "", "2026-11-16", "2026-11-16"},
+		{"year", "", "2026-01-01", "2026-12-31"},
+		{"year", "2025", "2025-01-01", "2025-12-31"},
 	}
 	for _, c := range cases {
 		from, to, _, err := DateRange(c.name, c.arg, now)
@@ -24,7 +27,7 @@ func TestDateRange(t *testing.T) {
 			t.Errorf("DateRange(%q,%q) = %s..%s, %v; want %s..%s", c.name, c.arg, from, to, err, c.from, c.to)
 		}
 	}
-	for _, bad := range [][2]string{{"month", "2026-13"}, {"fortnight", ""}} {
+	for _, bad := range [][2]string{{"month", "2026-13"}, {"fortnight", ""}, {"year", "20x5"}} {
 		if _, _, _, err := DateRange(bad[0], bad[1], now); err == nil {
 			t.Errorf("DateRange(%q,%q) should fail", bad[0], bad[1])
 		}

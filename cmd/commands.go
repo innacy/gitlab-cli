@@ -95,7 +95,7 @@ func init() {
 
 		{name: "ship", desc: "Full flow: ticket → folders → commit → push → MR → update ticket", section: "Workflow", category: audit.CategoryAIGeneration, run: (*replState).handleShip},
 
-		{name: "stats", usage: "[week|month [YYYY-MM]|dashboard]", desc: "Activity summary or web dashboard", section: "Stats", subs: []string{"week", "month", "dashboard"}, run: (*replState).handleStats},
+		{name: "stats", usage: "[today|week|month [YYYY-MM]|year [YYYY]|dashboard|export csv|json]", desc: "Activity summary, web dashboard or export", section: "Stats", subs: []string{"today", "week", "month", "year", "dashboard", "export"}, run: (*replState).handleStats},
 
 		{name: "start", desc: "Start session (auto-runs on first command)", section: "Session", run: noArgs((*replState).handleStart)},
 		{name: "switch-team", desc: "Switch active team", section: "Session", run: noArgs((*replState).handleSwitchTeam)},
