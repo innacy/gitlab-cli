@@ -3,6 +3,15 @@ package config
 import "github.com/spf13/viper"
 
 func setDefaultsOn(v *viper.Viper) {
+	// AutomaticEnv only overrides keys viper already knows, so every key that
+	// should be settable from GITLAB_AI_* needs a default, even an empty one.
+	v.SetDefault("gitlab.token", "")
+	v.SetDefault("gitlab.default_project", "")
+	for _, p := range []string{"anthropic", "gemini", "nvidia"} {
+		v.SetDefault("ai."+p+".api_key", "")
+		v.SetDefault("ai."+p+".fallback_model", "")
+	}
+
 	v.SetDefault("platform", "gitlab")
 
 	v.SetDefault("gitlab.base_url", "https://gitlab.example.com/")

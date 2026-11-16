@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/viper"
@@ -225,6 +226,8 @@ func loadWithViper(v *viper.Viper, path string) (*AppConfig, error) {
 	setDefaultsOn(v)
 
 	v.SetEnvPrefix("GITLAB_AI")
+	// Nested keys map to env vars with "_": gitlab.base_url → GITLAB_AI_GITLAB_BASE_URL.
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
 	if err := v.ReadInConfig(); err != nil {
