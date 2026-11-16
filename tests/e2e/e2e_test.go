@@ -467,6 +467,51 @@ func TestHelpConfigAndRenamedCommands(t *testing.T) {
 	)
 }
 
+// ─── One-shot mode ───────────────────────────────────────────────────────────
+
+func oneShot(t *testing.T, dir string, args ...string) (string, int) {
+	t.Helper()
+	cmd := agentCmd(dir, goodToken)
+	cmd.Args = append(cmd.Args, args...)
+	cmd.Stdin = strings.NewReader("")
+	out, _ := cmd.CombinedOutput()
+	failOnRace(t, string(out))
+	return string(out), cmd.ProcessState.ExitCode()
+}
+
+func TestOneShotCommand(t *testing.T) {
+	gl := newFakeGitLab(t)
+	dir := workdir(t, gl.URL)
+
+	out, code := oneShot(t, dir, "mr-status", "team/backend")
+	if code != 0 {
+		t.Errorf("exit code = %d, want 0", code)
+	}
+	mustContain(t, out, "Open MRs — team/backend", "Add login")
+	mustNotContain(t, out, "Interactive Mode", "Session Summary")
+
+	out, code = oneShot(t, dir, "mr-approve", "team/backend", "8") // 404
+	if code != 1 {
+		t.Errorf("failed command exit code = %d, want 1", code)
+	}
+	mustContain(t, out, "Failed to approve MR")
+
+	// One-shot runs land in the same audit trail.
+	out, _ = oneShot(t, dir, "stats", "today")
+	mustContain(t, out, "Commands run:     2  (1 failed, 50% success)")
+}
+
+func TestOneShotFlagsBeforeCommand(t *testing.T) {
+	gl := newFakeGitLab(t)
+	cfgPath := filepath.Join(t.TempDir(), "c.yaml")
+	os.WriteFile(cfgPath, fmt.Appendf(nil, "gitlab:\n  base_url: %q\n", gl.URL), 0o600)
+	out, code := oneShot(t, t.TempDir(), "--config", cfgPath, "pipeline", "team/backend")
+	if code != 0 {
+		t.Errorf("exit code = %d\n%s", code, out)
+	}
+	mustContain(t, out, "Pipelines — team/backend")
+}
+
 // ─── Typos and confirmations ─────────────────────────────────────────────────
 
 func TestTypoSuggestsCommand(t *testing.T) {

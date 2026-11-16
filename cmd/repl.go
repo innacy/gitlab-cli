@@ -319,8 +319,10 @@ func (r *replState) resetIdle() {
 
 // ─── REPL Entry Point ───────────────────────────────────────────────────────
 // REPL: Read-Eval-Print-Loop
-func RunREPL(cfg *config.AppConfig) {
-	r := &replState{
+// newSession opens the audit trail and the line editor shared by the
+// interactive REPL and one-shot mode. close releases both.
+func newSession(cfg *config.AppConfig) (r *replState, close func(), err error) {
+	r = &replState{
 		cfg:     cfg,
 		reviews: make(map[string]*reviewEntry),
 	}
@@ -351,13 +353,48 @@ func RunREPL(cfg *config.AppConfig) {
 		HistorySearchFold: true,
 	})
 	if err != nil {
+		if r.auditor != nil {
+			r.auditor.Close()
+		}
+		return nil, nil, err
+	}
+	r.rl = rl
+	output.SetBrowserOpen(cfg.CLI.OpenInBrowser)
+
+	return r, func() {
+		rl.Close()
+		if r.auditor != nil {
+			r.auditor.Close()
+		}
+	}, nil
+}
+
+// RunOnce runs a single command non-interactively (git-agent mr-status x)
+// and returns the process exit code: 1 if the command reported an error.
+func RunOnce(cfg *config.AppConfig, args []string) int {
+	r, closeSession, err := newSession(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to initialize: %v\n", err)
+		return 1
+	}
+	defer closeSession()
+
+	before := output.ErrorCount()
+	r.dispatch(strings.Join(args, " "))
+	if output.ErrorCount() > before {
+		return 1
+	}
+	return 0
+}
+
+func RunREPL(cfg *config.AppConfig) {
+	r, closeSession, err := newSession(cfg)
+	if err != nil {
 		fmt.Printf("Failed to initialize: %v\n", err)
 		return
 	}
-	defer rl.Close()
-	r.rl = rl
-
-	output.SetBrowserOpen(cfg.CLI.OpenInBrowser)
+	defer closeSession()
+	rl := r.rl
 
 	idleTimeout := time.Duration(cfg.CLI.IdleTimeoutMinutes) * time.Minute
 	if idleTimeout <= 0 {
@@ -622,9 +659,6 @@ func (r *replState) handleExit() {
 		}
 		output.ThemeHeader("Session Summary")
 		output.ThemeBox(lines)
-	}
-	if r.auditor != nil {
-		r.auditor.Close()
 	}
 	fmt.Println()
 	output.GetTheme().Muted.Println("  Goodbye.")
