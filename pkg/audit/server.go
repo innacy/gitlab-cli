@@ -29,6 +29,8 @@ func NewServer(rec *Recorder) *Server {
 	s.mux.HandleFunc("/api/models", s.handleModels)
 	s.mux.HandleFunc("/api/model-stats", s.handleModelStats)
 	s.mux.HandleFunc("/api/model-performance", s.handleModelPerformance)
+	s.mux.HandleFunc("/api/commands", s.handleCommands)
+	s.mux.HandleFunc("/api/projects", s.handleProjects)
 	s.mux.HandleFunc("/", s.handleDashboard)
 	return s
 }
@@ -162,7 +164,33 @@ func (s *Server) handleModelPerformance(w http.ResponseWriter, r *http.Request) 
 	s.writeJSON(w, perf)
 }
 
+func (s *Server) handleCommands(w http.ResponseWriter, r *http.Request) {
+	from, to := s.parseDateRange(r)
+	rows, err := s.recorder.CommandBreakdown(from, to)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.writeJSON(w, rows)
+}
+
+func (s *Server) handleProjects(w http.ResponseWriter, r *http.Request) {
+	from, to := s.parseDateRange(r)
+	rows, err := s.recorder.ProjectBreakdown(from, to, 10)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.writeJSON(w, rows)
+}
+
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// The page is self-contained; forbid anything external.
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'")
 	w.Write(dashboardHTML)
 }
