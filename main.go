@@ -16,6 +16,10 @@ import (
 func main() {
 	configPath := flag.String("config", "", "path to config.yaml (default: ./config.yaml, ./configs/, then "+config.Dir()+")")
 	env := flag.String("env", "", "environment profile from the 'environments:' config section")
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage:\n  git-agent [flags]                     interactive REPL\n  git-agent [flags] <command> [args]    run one command and exit (status 1 on error)\n\nFlags:\n")
+		flag.PrintDefaults()
+	}
 	flag.Parse()
 
 	cfg, err := config.LoadWith(*configPath, *env)
@@ -54,5 +58,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	if flag.NArg() > 0 {
+		os.Exit(cmd.RunOnce(cfg, flag.Args()))
+	}
 	cmd.RunREPL(cfg)
 }

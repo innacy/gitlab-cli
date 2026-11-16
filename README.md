@@ -148,7 +148,15 @@ API keys can be set in `config.yaml` or via environment variables — env vars t
 ./bin/gitlab-ai
 ```
 
-The REPL starts immediately. Type `start` to begin a session, `help` to see all commands, `exit` to quit.
+Run a single command without the REPL — handy in scripts; the exit status is 1
+if the command reports an error:
+
+```bash
+./bin/gitlab-ai mr-status cnips/backend
+./bin/gitlab-ai --env personal stats week
+```
+
+Without a command, the REPL starts immediately. Type `start` to begin a session, `help` to see all commands, `exit` to quit.
 
 ```
 > start
