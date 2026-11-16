@@ -23,7 +23,7 @@ An interactive REPL for GitLab — manage merge requests, pipelines, and tickets
 - **Pipeline management** — list, inspect, tail logs, retry, cancel
 - **Ticket/issue workflow** — create, update, search, close; generate descriptions from diffs
 - **Content generation** — AI-drafted ticket content, epic descriptions, and MR descriptions from git diffs
-- **All-in-one workflow** — ticket → folder → commit → push → MR in one command
+- **Ship workflow** — ticket → folders → commit → push → MR → update ticket in one command
 - **Free-form AI chat** — any input that isn't a command is forwarded to the AI as a question
 - **Tab completion** — project names and commands auto-complete
 - **History** — Up/Down navigation, Ctrl+R reverse search
@@ -146,6 +146,7 @@ The REPL starts immediately. Type `start` to begin a session, `help` to see all 
 | `pipeline-logs <project> <job-id>` | Stream job log output |
 | `pipeline-retry <project> <id>` | Retry a failed pipeline |
 | `pipeline-cancel <project> <id>` | Cancel a running pipeline |
+| `pipeline-triage <project> [id]` | AI triage of a failed pipeline |
 
 ### Tickets / Issues
 
@@ -181,13 +182,21 @@ The REPL starts immediately. Type `start` to begin a session, `help` to see all 
 
 | Command | Description |
 |---------|-------------|
-| `all-in-one` | Full flow: ticket → folder → commit → push → MR |
+| `ship` | Full flow: ticket → folders → commit → push → MR → update ticket |
+
+### Stats
+
+| Command | Description |
+|---------|-------------|
+| `stats [week\|month [YYYY-MM]]` | Activity summary from the local audit trail |
+| `stats dashboard` | Open the web dashboard |
 
 ### Session
 
 | Command | Description |
 |---------|-------------|
 | `start` | Begin a session (fetches projects in background) |
+| `switch-team` | Switch the active team |
 | `config` | Show current configuration |
 | `help` | Print command reference |
 | `exit` | End session |
@@ -220,7 +229,7 @@ make tidy       # go mod tidy
 | Key | Default | Description |
 |-----|---------|-------------|
 | `gitlab.base_url` | — | GitLab instance URL |
-| `gitlab.parent_folder` | — | Local folder containing cloned repos (for `all-in-one`) |
+| `gitlab.parent_folder` | — | Local folder containing cloned repos (for `ship`) |
 | `ai.provider` | `anthropic` | Active AI provider |
 | `ai.timeout_seconds` | `180` | HTTP timeout for AI API calls |
 | `cli.color_output` | `true` | Colorized output (disable with `NO_COLOR` env var) |

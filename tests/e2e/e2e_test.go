@@ -227,7 +227,10 @@ func TestStartupAuthenticates(t *testing.T) {
 		"Session started",
 		"Session Summary",
 		"Goodbye.",
+		"Type 'help' for commands",
 	)
+	// The full command reference belongs to `help`, not the banner.
+	mustNotContain(t, out, "Command Reference", "mr-status")
 }
 
 func TestBadTokenReportsAuthFailure(t *testing.T) {
@@ -272,6 +275,9 @@ func TestHelpConfigAndRenamedCommands(t *testing.T) {
 	out, _ := run(t, workdir(t, gl.URL), goodToken, "help", "config", "raise-mr")
 	mustContain(t, out,
 		"git-agent — Command Reference",
+		"pipeline-triage <project> [id]",
+		"stats [week|month [YYYY-MM]|dashboard]",
+		"switch-team",
 		"Current Configuration",
 		gl.URL,
 		"Active Team:    team",

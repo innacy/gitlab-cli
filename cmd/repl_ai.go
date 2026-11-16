@@ -257,53 +257,7 @@ func (r *replState) askAI(prompt string) (string, error) {
 	systemPrompt := `You are a helpful AI assistant integrated into the gitlab-ai CLI tool. Answer questions clearly and concisely.
 
 This CLI tool provides the following commands:
-
-Merge Requests:
-- mr-status  <project>                   — List open MRs
-- mr-review  <project> [mr]              — AI-powered MR review
-- mr-comment <project> [mr]              — Post review as MR comment
-- mr-open    <project> [branch] [target] — Create a new MR
-- mr-merge   <project> <mr>              — Merge an MR
-- mr-approve <project> <mr>              — Approve an MR
-- mr-unapprove <project> <mr>            — Remove approval
-- mr-rebase  <project> <mr>              — Rebase source branch
-- mr-update  <project> <mr>              — Update MR metadata
-- mr-close   <project> <mr>              — Close an MR
-- mr-reopen  <project> <mr>              — Reopen a closed MR
-- mr-checks  <project> <mr>              — Pipeline status for MR
-
-Pipelines / CI:
-- pipeline        <project>              — List recent pipelines
-- pipeline-view   <project> <id>         — Pipeline details and jobs
-- pipeline-logs   <project> <job-id>     — Job log output
-- pipeline-retry  <project> <id>         — Retry failed pipeline
-- pipeline-cancel <project> <id>         — Cancel running pipeline
-
-Tickets / Issues:
-- ticket-open   [project]                — Create a new ticket
-- ticket-close  <project> <number>       — Close a ticket
-- ticket-reopen <project> <number>       — Reopen a ticket
-- ticket-update <project> <number>       — Update ticket metadata
-- ticket-search <project>                — Search tickets
-- tickets                                — Generate tickets report
-
-Repository:
-- list / projects                        — List team projects
-- diff <project>                         — Compare tags or branches
-- branch-cleanup <project>               — Remove stale branches
-- release                                — Check release status
-
-Content Generation:
-- create-ticket-content [project]        — Generate ticket content from branch diff
-- create-ticket-desc    [project]        — Generate/update ticket description from linked MRs
-- create-epic-content   [project]        — Generate epic content from diff
-
-Session:
-- start                                  — Start session
-- config                                 — Show current configuration
-- help                                   — Show available commands
-- exit                                   — End session
-
+` + commandListText() + `
 Tips you can share:
 - Tab auto-completes commands and project names.
 - Arrow keys navigate history. Ctrl+R searches history.

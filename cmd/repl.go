@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/chzyer/readline"
-	"github.com/fatih/color"
 
 	"gitlab-ai/internal/models"
 	"gitlab-ai/pkg/ai"
@@ -64,60 +63,6 @@ type sessionStats struct {
 }
 
 // ─── Auto-complete ───────────────────────────────────────────────────────────
-
-func (r *replState) buildCompleter() *readline.PrefixCompleter {
-	projectDynamic := readline.PcItemDynamic(func(line string) []string {
-		return r.projectSuggestions()
-	})
-
-	return readline.NewPrefixCompleter(
-		readline.PcItem("start"),
-		readline.PcItem("list"),
-		readline.PcItem("projects"),
-		readline.PcItem("tickets"),
-		readline.PcItem("ticket-open", projectDynamic),
-		readline.PcItem("ticket-open-empty"),
-		readline.PcItem("ship"),
-		readline.PcItem("ticket-close", projectDynamic),
-		readline.PcItem("ticket-reopen", projectDynamic),
-		readline.PcItem("ticket-update", projectDynamic),
-		readline.PcItem("ticket-search", projectDynamic),
-		readline.PcItem("create-ticket-desc", projectDynamic),
-		readline.PcItem("tickets-black"),
-		readline.PcItem("mr-status", projectDynamic),
-		readline.PcItem("mr-open", projectDynamic),
-		readline.PcItem("mr-review", projectDynamic),
-		readline.PcItem("mr-comment", projectDynamic),
-		readline.PcItem("mr-checks", projectDynamic),
-		readline.PcItem("mr-merge", projectDynamic),
-		readline.PcItem("mr-approve", projectDynamic),
-		readline.PcItem("mr-unapprove", projectDynamic),
-		readline.PcItem("mr-rebase", projectDynamic),
-		readline.PcItem("mr-update", projectDynamic),
-		readline.PcItem("mr-close", projectDynamic),
-		readline.PcItem("mr-reopen", projectDynamic),
-		readline.PcItem("pipeline", projectDynamic),
-		readline.PcItem("pipeline-view", projectDynamic),
-		readline.PcItem("pipeline-logs", projectDynamic),
-		readline.PcItem("pipeline-retry", projectDynamic),
-		readline.PcItem("pipeline-cancel", projectDynamic),
-		readline.PcItem("pipeline-triage", projectDynamic),
-		readline.PcItem("diff", projectDynamic),
-		readline.PcItem("branch-cleanup", projectDynamic),
-		readline.PcItem("create-ticket-content", projectDynamic),
-		readline.PcItem("create-epic-content", projectDynamic),
-		readline.PcItem("release"),
-		readline.PcItem("config"),
-		readline.PcItem("switch-team"),
-		readline.PcItem("stats",
-			readline.PcItem("week"),
-			readline.PcItem("month"),
-			readline.PcItem("dashboard"),
-		),
-		readline.PcItem("help"),
-		readline.PcItem("exit"),
-	)
-}
 
 func (r *replState) projectSuggestions() []string {
 	r.cacheMu.RLock()
@@ -394,78 +339,11 @@ func RunREPL(cfg *config.AppConfig) {
 
 	output.SetBrowserOpen(cfg.CLI.OpenInBrowser)
 
-	theme := output.GetTheme()
-	bold := color.New(color.Bold)
-
-	fmt.Println()
-	theme.Header.Println("  git-agent — Interactive Mode")
-	fmt.Println()
-	bold.Println("Merge Requests:")
-	fmt.Println("  mr-status  <project>                   - List open MRs")
-	fmt.Println("  mr-review  <project> [mr-number]       - Review MR with AI")
-	fmt.Println("  mr-comment <project> [mr-number]       - Post review as MR comment")
-	fmt.Println("  mr-open    <project> [branch] [target] - Create a new MR")
-	fmt.Println("  mr-merge   <project> <mr-number>       - Merge an MR")
-	fmt.Println("  mr-approve <project> <mr-number>       - Approve an MR")
-	fmt.Println("  mr-rebase  <project> <mr-number>       - Rebase MR source branch")
-	fmt.Println("  mr-update  <project> <mr-number>       - Update MR metadata")
-	fmt.Println("  mr-close   <project> <mr-number>       - Close an MR")
-	fmt.Println("  mr-reopen  <project> <mr-number>       - Reopen a closed MR")
-	fmt.Println("  mr-checks  <project> <mr-number>       - Show pipeline status for MR")
-	fmt.Println()
-	bold.Println("Pipelines / CI:")
-	fmt.Println("  pipeline        <project>              - List recent pipelines")
-	fmt.Println("  pipeline-view   <project> <id>         - View pipeline details & jobs")
-	fmt.Println("  pipeline-logs   <project> <job-id>     - Show job log output")
-	fmt.Println("  pipeline-retry  <project> <id>         - Retry a failed pipeline")
-	fmt.Println("  pipeline-cancel <project> <id>         - Cancel a running pipeline")
-	fmt.Println("  pipeline-triage <project> [id]         - AI triage of failed pipeline")
-	fmt.Println()
-	bold.Println("Tickets / Issues:")
-	fmt.Println("  ticket-open    [project]               - Create a new ticket")
-	fmt.Println("  ticket-open-empty                      - Quick-create empty ticket (assigned to you)")
-	fmt.Println("  ticket-close   <project> <number>      - Close a ticket")
-	fmt.Println("  ticket-reopen  <project> <number>      - Reopen a ticket")
-	fmt.Println("  ticket-update  <project> <number>      - Update ticket metadata")
-	fmt.Println("  ticket-search  <project>               - Search tickets")
-	fmt.Println("  tickets                                - Generate tickets report")
-	fmt.Println("  tickets-black                          - Generate malformed tickets report")
-	fmt.Println()
-	bold.Println("Repository:")
-	fmt.Println("  list / projects                        - List team projects")
-	fmt.Println("  diff           <project>               - Compare tags or branches")
-	fmt.Println("  branch-cleanup <project>               - Remove stale/merged branches")
-	fmt.Println("  release                                - Check release status of all projects")
-	fmt.Println()
-	bold.Println("Content Generation:")
-	fmt.Println("  create-ticket-content [project]        - Generate ticket from committed branch diff")
-	fmt.Println("  create-ticket-desc    [project]        - Generate description from linked MRs")
-	fmt.Println("  create-epic-content   [project]        - Generate epic from committed branch diff")
-	fmt.Println()
-	fmt.Println()
-	bold.Println("Workflow:")
-	fmt.Println("  ship                                   - Full flow: ticket → multi-select folders → commit → MR → update ticket")
-	fmt.Println()
-	bold.Println("Session:")
-	fmt.Println("  start                                  - Start session (auto-runs on first command)")
-	fmt.Println("  switch-team                            - Switch active team")
-	fmt.Println("  config                                 - Show current configuration")
-	fmt.Println()
-	bold.Println("Stats:")
-	fmt.Println("  stats [week|month] [YYYY-MM]           - Activity summary")
-	fmt.Println("  stats dashboard                        - Open web dashboard")
-	fmt.Println()
-	theme.Muted.Println("  exit  - End session")
-	theme.Muted.Println("  Any other input is sent to AI as a question.")
-	fmt.Println()
 	idleTimeout := time.Duration(cfg.CLI.IdleTimeoutMinutes) * time.Minute
 	if idleTimeout <= 0 {
 		idleTimeout = 1 * time.Hour
 	}
-
-	theme.Warning.Printf("  Auto-exit after %s of inactivity.\n", idleTimeout)
-	theme.Muted.Println("  Shortcuts: Tab = auto-complete | ↑/↓ = history | Ctrl+R = search history")
-	fmt.Println()
+	printBanner(idleTimeout)
 
 	r.idleTimer = time.AfterFunc(idleTimeout, func() {
 		r.timedOut.Store(true)
@@ -510,28 +388,13 @@ func RunREPL(cfg *config.AppConfig) {
 
 // ─── Command Dispatch ────────────────────────────────────────────────────────
 
-var significantCommands = map[string]string{
-	"mr-review":             audit.CategoryAIGeneration,
-	"mr-comment":            audit.CategoryGitLabMutation,
-	"mr-open":               audit.CategoryGitLabMutation,
-	"mr-merge":              audit.CategoryGitLabMutation,
-	"mr-approve":            audit.CategoryGitLabMutation,
-	"mr-unapprove":          audit.CategoryGitLabMutation,
-	"mr-close":              audit.CategoryGitLabMutation,
-	"mr-reopen":             audit.CategoryGitLabMutation,
-	"mr-rebase":             audit.CategoryGitLabMutation,
-	"mr-update":             audit.CategoryGitLabMutation,
-	"ticket-open":           audit.CategoryGitLabMutation,
-	"ticket-open-empty":     audit.CategoryGitLabMutation,
-	"ticket-close":          audit.CategoryGitLabMutation,
-	"ticket-reopen":         audit.CategoryGitLabMutation,
-	"ticket-update":         audit.CategoryGitLabMutation,
-	"create-ticket-content": audit.CategoryAIGeneration,
-	"create-ticket-desc":    audit.CategoryAIGeneration,
-	"create-epic-content":   audit.CategoryAIGeneration,
-	"pipeline-triage":       audit.CategoryAIGeneration,
-	"ship":                  audit.CategoryAIGeneration,
-	"branch-cleanup":        audit.CategoryGitLabMutation,
+func printBanner(idleTimeout time.Duration) {
+	theme := output.GetTheme()
+	fmt.Println()
+	theme.Header.Println("  git-agent — Interactive Mode")
+	theme.Muted.Println("  Type 'help' for commands, or ask anything in plain English.")
+	theme.Muted.Printf("  Tab completes · ↑/↓ history · Ctrl+R search · auto-exit after %s idle\n", idleTimeout)
+	fmt.Println()
 }
 
 func (r *replState) dispatch(line string) bool {
@@ -540,104 +403,21 @@ func (r *replState) dispatch(line string) bool {
 		return false
 	}
 
-	cmd := strings.ToLower(parts[0])
+	name := strings.ToLower(parts[0])
+	if name == "exit" {
+		r.handleExit()
+		return true
+	}
+
 	start := time.Now()
 	output.TakeWorkTime()
 
-	switch cmd {
-	case "start":
-		r.handleStart()
-	case "list":
-		r.handleList()
-	case "projects":
-		r.handleList()
-	case "mr-review":
-		r.handleMRReview(parts[1:])
-	case "mr-comment":
-		r.handleMRComment(parts[1:])
-	case "mr-status":
-		r.handleMRStatus(parts[1:])
-	case "mr-checks":
-		r.handleMRChecks(parts[1:])
-	case "mr-open":
-		r.handleMROpen(parts[1:])
-	case "mr-merge":
-		r.handleMRMerge(parts[1:])
-	case "mr-approve":
-		r.handleMRApprove(parts[1:])
-	case "mr-unapprove":
-		r.handleMRUnapprove(parts[1:])
-	case "mr-rebase":
-		r.handleMRRebase(parts[1:])
-	case "mr-update":
-		r.handleMRUpdate(parts[1:])
-	case "mr-close":
-		r.handleMRClose(parts[1:])
-	case "mr-reopen":
-		r.handleMRReopen(parts[1:])
-	case "pipeline":
-		r.handlePipeline(parts[1:])
-	case "pipeline-view":
-		r.handlePipelineView(parts[1:])
-	case "pipeline-logs":
-		r.handlePipelineLogs(parts[1:])
-	case "pipeline-retry":
-		r.handlePipelineRetry(parts[1:])
-	case "pipeline-cancel":
-		r.handlePipelineCancel(parts[1:])
-	case "pipeline-triage":
-		r.handlePipelineTriage(parts[1:])
-	case "diff":
-		r.handleDiff(parts[1:])
-	case "branch-cleanup":
-		r.handleBranchCleanup(parts[1:])
-	case "tickets":
-		r.handleTickets(parts[1:])
-	case "ticket-open":
-		r.handleTicketOpen(parts[1:])
-	case "ticket-open-empty":
-		r.handleTicketOpenEmpty(parts[1:])
-	case "ship":
-		r.handleShip(parts[1:])
-	case "ticket-close":
-		r.handleTicketClose(parts[1:])
-	case "ticket-reopen":
-		r.handleTicketReopen(parts[1:])
-	case "ticket-update":
-		r.handleTicketUpdate(parts[1:])
-	case "ticket-search":
-		r.handleTicketSearch(parts[1:])
-	case "create-ticket-desc":
-		r.handleTicketDescribe(parts[1:])
-	case "tickets-black":
-		r.handleTicketsBlack(parts[1:])
-	case "create-ticket-content":
-		r.handleCreateTicketContent(parts[1:])
-	case "create-epic-content":
-		r.handleCreateEpicContent(parts[1:])
-	case "release":
-		r.handleRelease()
-	case "config":
-		r.handleConfig()
-	case "switch-team":
-		r.handleSwitchTeam()
-	case "stats":
-		r.handleStats(parts[1:])
-	case "help":
-		r.showHelp()
-	case "exit":
-		r.handleExit()
-		return true
-
-	case "mr":
-		output.PrintWarning("Command renamed → use 'mr-review' instead.")
-	case "add":
-		output.PrintWarning("Command renamed → use 'mr-comment' instead.")
-	case "index":
-		output.PrintWarning("Command removed. Context is managed automatically during reviews.")
-	case "raise-mr":
-		output.PrintWarning("Command renamed → use 'mr-open' instead.")
-
+	c := lookupCommand(name)
+	switch {
+	case c != nil:
+		c.run(r, parts[1:])
+	case renamedCommands[name] != "":
+		output.PrintWarning(renamedCommands[name])
 	default:
 		r.handleIntentOrChat(line)
 	}
@@ -647,20 +427,18 @@ func (r *replState) dispatch(line string) bool {
 		output.PrintWorked(d)
 	}
 
-	if r.auditor != nil {
-		if category, ok := significantCommands[cmd]; ok {
-			project := ""
-			if len(parts) > 1 {
-				project = parts[1]
-			}
-			r.auditor.Record(audit.Event{
-				Command:    cmd,
-				Category:   category,
-				Project:    project,
-				DurationMs: time.Since(start).Milliseconds(),
-				Success:    true,
-			})
+	if r.auditor != nil && c != nil && c.category != "" {
+		project := ""
+		if len(parts) > 1 {
+			project = parts[1]
 		}
+		r.auditor.Record(audit.Event{
+			Command:    c.name,
+			Category:   c.category,
+			Project:    project,
+			DurationMs: time.Since(start).Milliseconds(),
+			Success:    true,
+		})
 	}
 
 	return false
