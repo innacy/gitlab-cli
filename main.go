@@ -37,6 +37,9 @@ func main() {
 	if w := cfg.SecretPermissionWarning(); w != "" {
 		fmt.Fprintf(os.Stderr, "⚠ %s\n", w)
 	}
+	for _, w := range cfg.AIRedirectWarnings() {
+		fmt.Fprintf(os.Stderr, "⚠ %s\n", w)
+	}
 
 	result := config.Validate(cfg)
 	for _, w := range result.Warnings {
