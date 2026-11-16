@@ -11,6 +11,18 @@ import (
 func DateRange(name, arg string, now time.Time) (from, to, label string, err error) {
 	day := func(t time.Time) string { return t.Format("2006-01-02") }
 	switch name {
+	case "today":
+		return day(now), day(now), "Today", nil
+	case "year":
+		y := now.Year()
+		if arg != "" {
+			t, err := time.Parse("2006", arg)
+			if err != nil {
+				return "", "", "", fmt.Errorf("invalid year: %s (use YYYY)", arg)
+			}
+			y = t.Year()
+		}
+		return fmt.Sprintf("%d-01-01", y), fmt.Sprintf("%d-12-31", y), fmt.Sprint(y), nil
 	case "week":
 		return day(now.AddDate(0, 0, -6)), day(now), "Last 7 Days", nil
 	case "month", "":
@@ -23,6 +35,6 @@ func DateRange(name, arg string, now time.Time) (from, to, label string, err err
 		}
 		return day(m), day(m.AddDate(0, 1, -1)), m.Format("January 2006"), nil
 	default:
-		return "", "", "", fmt.Errorf("unknown range %q (use week or month [YYYY-MM])", name)
+		return "", "", "", fmt.Errorf("unknown range %q (use today, week, month [YYYY-MM] or year [YYYY])", name)
 	}
 }

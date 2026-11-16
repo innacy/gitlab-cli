@@ -1,7 +1,12 @@
 package cmd
 
 import (
+	"bytes"
+	"encoding/csv"
+	"encoding/json"
 	"fmt"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,6 +33,9 @@ func (r *replState) handleStats(args []string) {
 	case "dashboard":
 		r.handleStatsDashboard()
 		return
+	case "export":
+		r.handleStatsExport(args[1:])
+		return
 	}
 
 	from, to, label, err := audit.DateRange(subCmd, dateArg, time.Now())
@@ -51,12 +59,35 @@ func (r *replState) handleStats(args []string) {
 	lines := []string{
 		fmt.Sprintf("Activity — %s", label),
 		"",
-		fmt.Sprintf("Commands run:     %d", summary.TotalEvents),
+		fmt.Sprintf("Commands run:     %d%s", summary.TotalEvents, successRate(summary)),
 		fmt.Sprintf("AI generations:   %d", summary.AIGenerations),
 		fmt.Sprintf("MRs created:      %d", summary.MRsCreated),
 		fmt.Sprintf("MRs reviewed:     %d", summary.MRsReviewed),
 		fmt.Sprintf("Tickets created:  %d", summary.TicketsCreated),
 		fmt.Sprintf("Files written:    %d", summary.FilesWritten),
+	}
+	if summary.MRsReviewed > 0 {
+		lines = append(lines, fmt.Sprintf("Reviews posted:   %d of %d (%d%%)",
+			summary.ReviewsPosted, summary.MRsReviewed, summary.ReviewsPosted*100/summary.MRsReviewed))
+	}
+	if days, err := r.auditor.DailyCounts(from, to); err == nil && len(days) > 1 {
+		lines = append(lines, "", "Trend:  "+output.Sparkline(days, 52))
+	}
+	if cmds, _ := r.auditor.CommandBreakdown(from, to); len(cmds) > 0 {
+		lines = append(lines, "", "Top Commands:")
+		for _, c := range cmds[:min(len(cmds), 8)] {
+			line := fmt.Sprintf("  %-22s %4d", c.Command, c.Count)
+			if c.Failed > 0 {
+				line += fmt.Sprintf("  (%d failed)", c.Failed)
+			}
+			lines = append(lines, line)
+		}
+	}
+	if projects, _ := r.auditor.ProjectBreakdown(from, to, 5); len(projects) > 0 {
+		lines = append(lines, "", "Top Projects:")
+		for _, p := range projects {
+			lines = append(lines, fmt.Sprintf("  %-30s %4d", p.Project, p.Count))
+		}
 	}
 
 	if len(models) > 0 {
@@ -158,4 +189,69 @@ func (r *replState) handleStatsDashboard() {
 	shutdown()
 	output.PrintSuccess("Dashboard stopped.")
 	fmt.Println()
+}
+
+func successRate(s *audit.SummaryResult) string {
+	if s.TotalEvents == 0 {
+		return ""
+	}
+	return fmt.Sprintf("  (%d failed, %d%% success)", s.Failed, (s.TotalEvents-s.Failed)*100/s.TotalEvents)
+}
+
+// handleStatsExport writes the raw events of a range to a CSV or JSON file:
+// stats export csv|json [today|week|month [YYYY-MM]|year [YYYY]]
+func (r *replState) handleStatsExport(args []string) {
+	if len(args) == 0 || (args[0] != "csv" && args[0] != "json") {
+		output.PrintError("Usage: stats export csv|json [today|week|month [YYYY-MM]|year [YYYY]]")
+		return
+	}
+	format := args[0]
+	rangeName, rangeArg := "month", ""
+	if len(args) > 1 {
+		rangeName = strings.ToLower(args[1])
+	}
+	if len(args) > 2 {
+		rangeArg = args[2]
+	}
+	from, to, _, err := audit.DateRange(rangeName, rangeArg, time.Now())
+	if err != nil {
+		output.PrintError(err.Error())
+		return
+	}
+	events, err := r.auditor.Events(from, to)
+	if err != nil {
+		output.PrintError(fmt.Sprintf("Failed to load events: %v", err))
+		return
+	}
+
+	var buf bytes.Buffer
+	if format == "json" {
+		enc := json.NewEncoder(&buf)
+		enc.SetIndent("", "  ")
+		if events == nil {
+			events = []audit.EventRow{}
+		}
+		err = enc.Encode(events)
+	} else {
+		w := csv.NewWriter(&buf)
+		w.Write([]string{"timestamp", "command", "category", "project", "duration_ms", "success"})
+		for _, e := range events {
+			w.Write([]string{e.Timestamp, e.Command, e.Category, e.Project,
+				strconv.FormatInt(e.DurationMs, 10), strconv.FormatBool(e.Success)})
+		}
+		w.Flush()
+		err = w.Error()
+	}
+	if err != nil {
+		output.PrintError(fmt.Sprintf("Failed to encode events: %v", err))
+		return
+	}
+
+	filename := filepath.Join(r.cfg.Other.Directory, fmt.Sprintf("stats_%s_%s.%s", from, to, format))
+	if err := writeFile(filename, buf.String()); err != nil {
+		output.PrintError(fmt.Sprintf("Failed to write export: %v", err))
+		return
+	}
+	output.PrintSuccess(fmt.Sprintf("Exported %d events (%s → %s)", len(events), from, to))
+	output.PrintFilePath(filename)
 }
