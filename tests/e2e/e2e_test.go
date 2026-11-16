@@ -476,7 +476,8 @@ func TestFreeFormQuestionGoesToChat(t *testing.T) {
 		return "A rebase replays your commits on top of another branch."
 	})
 	out, _ := run(t, aiWorkdir(t, gl.URL, ai.URL), goodToken, "what is a rebase")
-	mustContain(t, out, "A rebase replays your commits")
+	mustContain(t, out, "A rebase replays your commits",
+		"ai.anthropic.base_url in ", "sends your anthropic API key to 127.0.0.1")
 }
 
 func TestNaturalLanguageIsRoutedToCommand(t *testing.T) {

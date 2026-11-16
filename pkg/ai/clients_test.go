@@ -50,8 +50,8 @@ func TestGeminiBaseURLAndUsage(t *testing.T) {
 	c.BaseURL = srv.URL
 	res, err := c.Chat(context.Background(), "sys", "user")
 	check(t, res, err, 7, 2)
-	if req.URL.Path != "/v1beta/models/gem:generateContent" {
-		t.Errorf("path = %s", req.URL.Path)
+	if req.URL.Path != "/v1beta/models/gem:generateContent" || req.URL.RawQuery != "" || req.Header.Get("x-goog-api-key") != "k" {
+		t.Errorf("request = %s?%s key header=%q", req.URL.Path, req.URL.RawQuery, req.Header.Get("x-goog-api-key"))
 	}
 }
 

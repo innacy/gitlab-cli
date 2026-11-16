@@ -111,13 +111,14 @@ func (c *GeminiClient) Chat(ctx context.Context, systemPrompt, userMessage strin
 		return ChatResult{}, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	url := endpoint(c.BaseURL, geminiHost, fmt.Sprintf("/v1beta/models/%s:generateContent?key=%s", c.model, c.apiKey))
+	url := endpoint(c.BaseURL, geminiHost, fmt.Sprintf("/v1beta/models/%s:generateContent", c.model))
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
 	if err != nil {
 		return ChatResult{}, fmt.Errorf("failed to create request: %w", err)
 	}
 
+	req.Header.Set("x-goog-api-key", c.apiKey) // header, not ?key=, so it never lands in logs or proxies
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
