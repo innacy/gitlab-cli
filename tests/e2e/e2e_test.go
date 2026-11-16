@@ -378,6 +378,26 @@ func TestConfigShowsAIKeyFromEnv(t *testing.T) {
 	mustNotContain(t, string(out), "unknown provider", "nv-secret")
 }
 
+func TestDoctor(t *testing.T) {
+	gl := newFakeGitLab(t)
+	dir := workdir(t, gl.URL)
+	cfgPath := filepath.Join(dir, "config.yaml")
+	cfg, _ := os.ReadFile(cfgPath)
+	os.WriteFile(cfgPath, append(cfg, "ai:\n  anthropic:\n    api_key: sk-ant-supersecret-9876\n"...), 0o644)
+	os.Chmod(cfgPath, 0o644) // WriteFile keeps the existing 0600 mode
+
+	out, _ := run(t, dir, goodToken, "doctor")
+	mustContain(t, out,
+		"contains secrets but has permissions 644",
+		"Config file: "+cfgPath,
+		"GitLab token: ****",
+		"(from env GITLAB_TOKEN)",
+		"GitLab: reachable, authenticated as @tester",
+		"key ****9876 (from config)",
+	)
+	mustNotContain(t, out, "supersecret", goodToken)
+}
+
 func TestHelpConfigAndRenamedCommands(t *testing.T) {
 	gl := newFakeGitLab(t)
 	out, _ := run(t, workdir(t, gl.URL), goodToken, "help", "config", "raise-mr")

@@ -34,6 +34,10 @@ func main() {
 
 	utils.InitLogger(cfg.CLI.Verbose)
 
+	if w := cfg.SecretPermissionWarning(); w != "" {
+		fmt.Fprintf(os.Stderr, "⚠ %s\n", w)
+	}
+
 	result := config.Validate(cfg)
 	for _, w := range result.Warnings {
 		fmt.Fprintf(os.Stderr, "⚠ config warning: %s\n", w)

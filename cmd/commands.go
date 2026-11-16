@@ -101,6 +101,7 @@ func init() {
 		{name: "switch-team", desc: "Switch active team", section: "Session", run: noArgs((*replState).handleSwitchTeam)},
 		{name: "switch-env", usage: "[name]", desc: "Switch environment profile (GitLab, AI, teams)", section: "Session", complete: environments, run: (*replState).handleSwitchEnv},
 		{name: "config", desc: "Show current configuration", section: "Session", run: noArgs((*replState).handleConfig)},
+		{name: "doctor", desc: "Check config sources, GitLab access and AI key", section: "Session", run: noArgs((*replState).handleDoctor)},
 		{name: "help", desc: "Show this help", section: "Session", run: noArgs((*replState).showHelp)},
 		{name: "exit", desc: "End session", section: "Session"}, // handled by dispatch
 	}
