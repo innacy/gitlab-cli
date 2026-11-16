@@ -500,6 +500,10 @@ func (r *replState) handleMRMerge(args []string) {
 		return
 	}
 
+	if !r.confirm(fmt.Sprintf("Merge MR #%d in %s?", mrNumber, project)) {
+		return
+	}
+
 	squash := r.cfg.Merge.Squash
 	removeSource := r.cfg.Merge.RemoveSourceBranch
 
@@ -706,6 +710,9 @@ func (r *replState) handleMRClose(args []string) {
 		return
 	}
 
+	if !r.confirm(fmt.Sprintf("Close MR #%d in %s?", mrNumber, project)) {
+		return
+	}
 	s := output.NewLoader(fmt.Sprintf(" Closing MR #%d...", mrNumber))
 	s.Start()
 	err := r.provider.MRs().CloseMR(project, mrNumber)

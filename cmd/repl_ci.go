@@ -290,6 +290,9 @@ func (r *replState) handlePipelineCancel(args []string) {
 		}
 	}
 
+	if !r.confirm(fmt.Sprintf("Cancel pipeline #%d in %s?", pipelineID, project)) {
+		return
+	}
 	s := output.NewLoader(fmt.Sprintf(" Cancelling pipeline #%d...", pipelineID))
 	s.Start()
 

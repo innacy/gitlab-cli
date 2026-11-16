@@ -369,6 +369,16 @@ func (r *replState) promptForYesNo(question string) bool {
 	return choice == 0
 }
 
+// confirm asks before an irreversible GitLab change. auto_confirm skips it;
+// declining is not an error.
+func (r *replState) confirm(question string) bool {
+	if r.promptForYesNo(question) {
+		return true
+	}
+	output.PrintWarning("Cancelled.")
+	return false
+}
+
 // promptForYesNoPost is for "post/publish" confirmations that respect confirm_before_post config.
 // When confirm_before_post is false, auto-confirms without prompting.
 func (r *replState) promptForYesNoPost(question string) bool {

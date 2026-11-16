@@ -162,3 +162,17 @@ func (r *replState) buildCompleter() *readline.PrefixCompleter {
 	}
 	return readline.NewPrefixCompleter(items...)
 }
+
+// suggestCommand returns the command a mistyped word most likely meant, or ""
+// when nothing is close. It runs before the AI fallback so a typo like
+// "mr-staus" doesn't become a slow, paid chat call.
+func suggestCommand(word string) string {
+	best, bestDist := "", 3 // at most 2 edits
+	for name := range commandsByName {
+		d := audit.Distance(word, name)
+		if d < bestDist && d*3 <= len(name) { // short words need closer matches
+			best, bestDist = name, d
+		}
+	}
+	return best
+}

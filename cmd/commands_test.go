@@ -63,3 +63,22 @@ func TestReadmeDocumentsEveryCommand(t *testing.T) {
 		}
 	}
 }
+
+func TestSuggestCommand(t *testing.T) {
+	cases := map[string]string{
+		"mr-staus":     "mr-status",
+		"pipline":      "pipeline",
+		"tickest":      "tickets",
+		"lsit":         "list",
+		"what":         "",
+		"hello":        "",
+		"mr-status":    "mr-status",
+		"swich-env":    "switch-env",
+		"completely-x": "",
+	}
+	for in, want := range cases {
+		if got := suggestCommand(in); got != want {
+			t.Errorf("suggestCommand(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
