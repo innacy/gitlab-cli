@@ -270,6 +270,20 @@ func TestPipelineList(t *testing.T) {
 	mustContain(t, out, "Pipelines — team/backend", "99", "failed", "Total: 1 pipelines")
 }
 
+func TestConfigShowsAIKeyFromEnv(t *testing.T) {
+	gl := newFakeGitLab(t)
+	dir := workdir(t, gl.URL)
+	cfg, _ := os.ReadFile(filepath.Join(dir, "config.yaml"))
+	os.WriteFile(filepath.Join(dir, "config.yaml"), append(cfg, "ai:\n  provider: nvidia\n"...), 0o600)
+
+	cmd := agentCmd(dir, goodToken)
+	cmd.Env = append(cmd.Env, "NVIDIA_API_KEY=nv-secret")
+	cmd.Stdin = strings.NewReader("config\nexit\n")
+	out, _ := cmd.CombinedOutput()
+	mustContain(t, string(out), "NVIDIA NIM", "key from env NVIDIA_API_KEY")
+	mustNotContain(t, string(out), "unknown provider", "nv-secret")
+}
+
 func TestHelpConfigAndRenamedCommands(t *testing.T) {
 	gl := newFakeGitLab(t)
 	out, _ := run(t, workdir(t, gl.URL), goodToken, "help", "config", "raise-mr")

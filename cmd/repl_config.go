@@ -26,21 +26,14 @@ func (r *replState) handleConfig() {
 	fmt.Println(r.cfg.GitLab.BaseURL)
 
 	theme.Primary.Print("  AI Provider:    ")
-	switch r.cfg.AI.Provider {
-	case "anthropic", "claude", "":
-		if r.cfg.AI.Anthropic.APIKey != "" {
-			fmt.Printf("Anthropic (Claude) — %s\n", r.cfg.AI.Anthropic.Model)
-		} else {
-			theme.Warning.Println("anthropic (ANTHROPIC_API_KEY not set)")
-		}
-	case "gemini", "google":
-		if r.cfg.AI.Gemini.APIKey != "" {
-			fmt.Printf("Google Gemini — %s\n", r.cfg.AI.Gemini.Model)
-		} else {
-			theme.Warning.Println("gemini (GEMINI_API_KEY not set)")
-		}
-	default:
+	ai := r.cfg.AI.Resolve()
+	switch {
+	case ai.Provider == "":
 		theme.Warning.Printf("unknown provider %q\n", r.cfg.AI.Provider)
+	case ai.APIKey == "":
+		theme.Warning.Printf("%s — %s (no API key: set ai.%s.api_key or %s)\n", ai.Label, ai.Model, ai.Provider, ai.KeyEnv)
+	default:
+		fmt.Printf("%s — %s (key from %s)\n", ai.Label, ai.Model, ai.KeySource)
 	}
 
 	theme.Primary.Print("  Color Output:   ")
