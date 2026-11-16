@@ -205,6 +205,16 @@ func TestInvalidProviderFailsFast(t *testing.T) {
 	mustContain(t, out, "ai.provider 'bogus' is not supported")
 }
 
+func TestEnvVarSuppliesBaseURL(t *testing.T) {
+	gl := newFakeGitLab(t)
+	cmd := agentCmd(workdir(t, ""), goodToken)
+	cmd.Env = append(cmd.Env, "GITLAB_AI_GITLAB_BASE_URL="+gl.URL)
+	cmd.Stdin = strings.NewReader("exit\n")
+	out, _ := cmd.CombinedOutput()
+	mustContain(t, string(out), "Authenticated as Test User (@tester)")
+	mustNotContain(t, string(out), "Configuration errors")
+}
+
 func TestStartupAuthenticates(t *testing.T) {
 	gl := newFakeGitLab(t)
 	out, code := run(t, workdir(t, gl.URL), goodToken)
