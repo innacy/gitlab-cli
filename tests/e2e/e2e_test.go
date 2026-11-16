@@ -39,19 +39,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	// ponytail: the REPL hardcodes its history file in /tmp, so every run would
-	// append test commands to the developer's real history. Snapshot and restore
-	// it; drop this once the history path is configurable.
-	const history = "/tmp/git-agent-history.tmp"
-	saved, histErr := os.ReadFile(history)
-
 	code := m.Run()
-
-	if histErr == nil {
-		os.WriteFile(history, saved, 0o644)
-	} else {
-		os.Remove(history)
-	}
 	os.RemoveAll(dir)
 	os.Exit(code)
 }
@@ -136,7 +124,8 @@ func workdir(t *testing.T, baseURL string) string {
 func agentCmd(dir, token string) *exec.Cmd {
 	cmd := exec.Command(binPath)
 	cmd.Dir = dir
-	// HOME is redirected so a developer's real ~/.netrc can never authenticate.
+	// HOME is redirected so a developer's real ~/.netrc, config and history
+	// are never read or written.
 	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + dir, "NO_COLOR=1", "GITLAB_TOKEN=" + token}
 	return cmd
 }
@@ -213,6 +202,50 @@ func TestEnvVarSuppliesBaseURL(t *testing.T) {
 	out, _ := cmd.CombinedOutput()
 	mustContain(t, string(out), "Authenticated as Test User (@tester)")
 	mustNotContain(t, string(out), "Configuration errors")
+}
+
+func TestConfigInUserDirWorksFromAnyCwd(t *testing.T) {
+	gl := newFakeGitLab(t)
+	home := t.TempDir()
+	cfgDir := filepath.Join(home, ".config", "git-agent")
+	os.MkdirAll(cfgDir, 0o700)
+	os.WriteFile(filepath.Join(cfgDir, "config.yaml"),
+		fmt.Appendf(nil, "gitlab:\n  base_url: %q\nteams:\n  - team\n", gl.URL), 0o600)
+
+	runIn := func(cwd string, commands ...string) string {
+		cmd := agentCmd(cwd, goodToken)
+		cmd.Env = append(cmd.Env, "HOME="+home) // later HOME wins
+		cmd.Stdin = strings.NewReader(strings.Join(append(commands, "exit"), "\n") + "\n")
+		out, _ := cmd.CombinedOutput()
+		return string(out)
+	}
+
+	out := runIn(t.TempDir(), "mr-approve team/backend 7")
+	mustContain(t, out, "Authenticated as Test User", "MR #7 approved")
+
+	// A different cwd sees the same audit trail.
+	out = runIn(t.TempDir(), "stats week")
+	mustContain(t, out, "Commands run:     1")
+
+	hist, err := os.ReadFile(filepath.Join(cfgDir, "history"))
+	if err != nil || !strings.Contains(string(hist), "mr-approve team/backend 7") {
+		t.Errorf("history not written to %s: %v %q", cfgDir, err, hist)
+	}
+	if _, err := os.Stat(filepath.Join(cfgDir, "audit", "audit.db")); err != nil {
+		t.Errorf("audit DB not in config dir: %v", err)
+	}
+}
+
+func TestConfigFlag(t *testing.T) {
+	gl := newFakeGitLab(t)
+	cfgPath := filepath.Join(t.TempDir(), "custom.yaml")
+	os.WriteFile(cfgPath, fmt.Appendf(nil, "gitlab:\n  base_url: %q\n", gl.URL), 0o600)
+
+	cmd := agentCmd(t.TempDir(), goodToken)
+	cmd.Args = append(cmd.Args, "--config", cfgPath)
+	cmd.Stdin = strings.NewReader("exit\n")
+	out, _ := cmd.CombinedOutput()
+	mustContain(t, string(out), "Authenticated as Test User")
 }
 
 func TestStartupAuthenticates(t *testing.T) {

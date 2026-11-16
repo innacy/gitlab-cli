@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 
@@ -13,7 +14,16 @@ import (
 )
 
 func main() {
-	cfg, err := config.Load()
+	configPath := flag.String("config", "", "path to config.yaml (default: ./config.yaml, ./configs/, then "+config.Dir()+")")
+	flag.Parse()
+
+	var cfg *config.AppConfig
+	var err error
+	if *configPath != "" {
+		cfg, err = config.LoadFrom(*configPath)
+	} else {
+		cfg, err = config.Load()
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
 		os.Exit(1)
