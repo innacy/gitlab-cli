@@ -91,6 +91,10 @@ func newFakeGitLab(t *testing.T) *fakeGitLab {
 			io.WriteString(w, backend)
 		case path == proj+"/merge_requests" && r.Method == http.MethodGet:
 			fmt.Fprintf(w, `[{"id":70,"iid":7,"title":"Add login","state":"opened","author":{"username":"alice","name":"Alice"},"source_branch":"feat/login","target_branch":"main","updated_at":%q,"web_url":"http://x/mr/7"}]`, now)
+		case path == proj+"/merge_requests/7" && r.Method == http.MethodGet:
+			fmt.Fprintf(w, `{"id":70,"iid":7,"title":"Add login","state":"opened","author":{"username":"alice","name":"Alice"},"source_branch":"feat/login","target_branch":"main","web_url":"http://x/mr/7","updated_at":%q}`, now)
+		case path == proj+"/merge_requests/7/changes":
+			io.WriteString(w, `{"id":70,"iid":7,"title":"Add login","changes":[{"old_path":"login.go","new_path":"login.go","diff":"@@ -1 +1,2 @@\n+func Login() {}\n"}]}`)
 		case path == proj+"/merge_requests/7/approve" && r.Method == http.MethodPost:
 			io.WriteString(w, `{"id":70,"iid":7}`)
 		case path == proj+"/pipelines":
@@ -104,6 +108,52 @@ func newFakeGitLab(t *testing.T) *fakeGitLab {
 	t.Cleanup(f.Close)
 	return f
 }
+
+// ─── Fake Anthropic ──────────────────────────────────────────────────────────
+
+// newFakeAnthropic answers the Messages API. reply maps the request (system
+// prompt, user message) to the response text.
+func newFakeAnthropic(t *testing.T, reply func(system, user string) string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/messages" || r.Header.Get("x-api-key") != "sk-test" {
+			w.WriteHeader(http.StatusUnauthorized)
+			io.WriteString(w, `{"type":"error","error":{"type":"authentication_error","message":"bad key"}}`)
+			return
+		}
+		var req struct {
+			System   string `json:"system"`
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		json.NewDecoder(r.Body).Decode(&req)
+		text, _ := json.Marshal(reply(req.System, req.Messages[0].Content))
+		fmt.Fprintf(w, `{"content":[{"type":"text","text":%s}],"usage":{"input_tokens":100,"output_tokens":20}}`, text)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// aiWorkdir is workdir plus an Anthropic provider pointed at the fake.
+func aiWorkdir(t *testing.T, gitlabURL, aiURL string) string {
+	t.Helper()
+	dir := workdir(t, gitlabURL)
+	cfgPath := filepath.Join(dir, "config.yaml")
+	cfg, _ := os.ReadFile(cfgPath)
+	cfg = fmt.Appendf(cfg, "ai:\n  provider: anthropic\n  anthropic:\n    api_key: sk-test\n    model: test-model\n    base_url: %q\n", aiURL)
+	cfg = append(cfg, `review:
+  template:
+    sections:
+      - name: Summary
+        prompt: Summarise
+        required: true
+`...)
+	os.WriteFile(cfgPath, cfg, 0o600)
+	return dir
+}
+
+func isIntentCall(system string) bool { return strings.Contains(system, "command classifier") }
 
 // ─── Harness ─────────────────────────────────────────────────────────────────
 
@@ -411,6 +461,70 @@ func TestHelpConfigAndRenamedCommands(t *testing.T) {
 		"Active Team:    team",
 		"use 'mr-open' instead",
 	)
+}
+
+// ─── AI commands ─────────────────────────────────────────────────────────────
+
+func TestFreeFormQuestionGoesToChat(t *testing.T) {
+	gl := newFakeGitLab(t)
+	ai := newFakeAnthropic(t, func(system, user string) string {
+		if isIntentCall(system) {
+			return `{"command":"chat","args":{},"confidence":1.0}`
+		}
+		return "A rebase replays your commits on top of another branch."
+	})
+	out, _ := run(t, aiWorkdir(t, gl.URL, ai.URL), goodToken, "what is a rebase")
+	mustContain(t, out, "A rebase replays your commits")
+}
+
+func TestNaturalLanguageIsRoutedToCommand(t *testing.T) {
+	gl := newFakeGitLab(t)
+	ai := newFakeAnthropic(t, func(system, user string) string {
+		return `{"command":"mr-status","args":{"project":"team/backend"},"confidence":0.95}`
+	})
+	out, _ := run(t, aiWorkdir(t, gl.URL, ai.URL), goodToken, "show me open merge requests in backend")
+	mustContain(t, out, "→ mr-status team/backend", "Open MRs — team/backend", "Add login")
+}
+
+func TestMRReviewSavesFileAndRecordsTokens(t *testing.T) {
+	gl := newFakeGitLab(t)
+	ai := newFakeAnthropic(t, func(system, user string) string {
+		if !strings.Contains(user, "func Login()") {
+			return "diff missing from prompt"
+		}
+		return "## Summary\n\nAdds a Login stub."
+	})
+	dir := aiWorkdir(t, gl.URL, ai.URL)
+	out, _ := run(t, dir, goodToken, "mr-review team/backend 7", "2", "stats today") // 2 = don't post
+	mustContain(t, out,
+		"Review saved to:",
+		"Commands run:     1  (0 failed, 100% success)",
+		"MRs reviewed:     1",
+		"Tokens in",
+	)
+	if !regexp.MustCompile(`test-model\s+1\s+.*\s100\s+20\b`).MatchString(out) {
+		t.Errorf("model performance row with 100/20 tokens not found:\n%s", out)
+	}
+	mustNotContain(t, out, "diff missing from prompt")
+	reviews, _ := filepath.Glob(filepath.Join(dir, ".data", "*7.md"))
+	if len(reviews) != 1 {
+		t.Fatalf("review files: %v", reviews)
+	}
+	if b, _ := os.ReadFile(reviews[0]); !strings.Contains(string(b), "Adds a Login stub.") {
+		t.Errorf("review file content:\n%s", b)
+	}
+}
+
+func TestAIErrorIsReported(t *testing.T) {
+	gl := newFakeGitLab(t)
+	ai := newFakeAnthropic(t, func(string, string) string { return "" })
+	dir := aiWorkdir(t, gl.URL, ai.URL)
+	cfgPath := filepath.Join(dir, "config.yaml")
+	cfg, _ := os.ReadFile(cfgPath)
+	os.WriteFile(cfgPath, []byte(strings.Replace(string(cfg), "sk-test", "sk-wrong", 1)), 0o600)
+
+	out, _ := run(t, dir, goodToken, "mr-review team/backend 7", "stats today")
+	mustContain(t, out, "bad key", "(1 failed")
 }
 
 // ─── Mutations + audit trail / stats ─────────────────────────────────────────

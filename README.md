@@ -134,6 +134,10 @@ The prompt shows the active environment and team: `git-agent[personal/me]>`.
 | Google Gemini | `gemini` | `GEMINI_API_KEY` | `gemini-2.5-flash` |
 | NVIDIA | `nvidia` | `NVIDIA_API_KEY` | `meta/llama-3.3-70b-instruct`, `qwen/qwen2.5-coder-32b-instruct` |
 
+Each provider also accepts `base_url` (e.g. `ai.anthropic.base_url`) to route
+calls through a proxy or gateway; it defaults to the provider's public API host.
+Token usage reported by the provider is recorded and shown in `stats`.
+
 API keys can be set in `config.yaml` or via environment variables — env vars take precedence.
 
 ---

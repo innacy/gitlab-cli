@@ -30,8 +30,10 @@ func (r *replState) ensureAI() error {
 			return fmt.Errorf("Anthropic API key not configured.\n  Set 'ai.anthropic.api_key' in config.yaml\n  Or export %s environment variable.\n  Get your key at: https://console.anthropic.com/settings/keys", cfg.APIKeyEnv)
 		}
 		primary := ai.NewAnthropicClient(apiKey, cfg.Model, cfg.MaxTokens, timeout)
+		primary.BaseURL = cfg.BaseURL
 		if cfg.FallbackModel != "" {
 			fallback := ai.NewAnthropicClient(apiKey, cfg.FallbackModel, cfg.MaxTokens, timeout)
+			fallback.BaseURL = cfg.BaseURL
 			r.aiClient = ai.NewFallbackClient(primary, fallback)
 		} else {
 			r.aiClient = primary
@@ -43,8 +45,10 @@ func (r *replState) ensureAI() error {
 			return fmt.Errorf("Gemini API key not configured.\n  Set 'ai.gemini.api_key' in config.yaml\n  Or export %s environment variable.\n  Get your key at: https://aistudio.google.com/apikey", cfg.APIKeyEnv)
 		}
 		primary := ai.NewGeminiClient(apiKey, cfg.Model, cfg.MaxTokens, timeout)
+		primary.BaseURL = cfg.BaseURL
 		if cfg.FallbackModel != "" {
 			fallback := ai.NewGeminiClient(apiKey, cfg.FallbackModel, cfg.MaxTokens, timeout)
+			fallback.BaseURL = cfg.BaseURL
 			r.aiClient = ai.NewFallbackClient(primary, fallback)
 		} else {
 			r.aiClient = primary
@@ -63,8 +67,10 @@ func (r *replState) ensureAI() error {
 			Stream:          false,
 		}
 		primary := ai.NewNvidiaClient(apiKey, cfg.Model, cfg.MaxTokens, timeout, opts)
+		primary.BaseURL = cfg.BaseURL
 		if cfg.FallbackModel != "" {
 			fallback := ai.NewNvidiaClient(apiKey, cfg.FallbackModel, cfg.MaxTokens, timeout, opts)
+			fallback.BaseURL = cfg.BaseURL
 			r.aiClient = ai.NewFallbackClient(primary, fallback)
 		} else {
 			r.aiClient = primary

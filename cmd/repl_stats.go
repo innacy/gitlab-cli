@@ -107,11 +107,12 @@ func (r *replState) handleStats(args []string) {
 
 	if len(modelPerf) > 0 {
 		lines = append(lines, "", "Model Performance:")
-		lines = append(lines, fmt.Sprintf("  %-28s %6s  %6s  %6s  %6s", "Model", "Calls", "Avg", "Min", "Max"))
+		lines = append(lines, fmt.Sprintf("  %-28s %6s  %6s  %6s  %6s  %9s  %9s", "Model", "Calls", "Avg", "Min", "Max", "Tokens in", "Tokens out"))
 		for _, m := range modelPerf {
-			lines = append(lines, fmt.Sprintf("  %-28s %6d  %5.1fs  %5.1fs  %5.1fs",
+			lines = append(lines, fmt.Sprintf("  %-28s %6d  %5.1fs  %5.1fs  %5.1fs  %9d  %9d",
 				m.Model, m.Count,
-				float64(m.AvgMs)/1000, float64(m.MinMs)/1000, float64(m.MaxMs)/1000))
+				float64(m.AvgMs)/1000, float64(m.MinMs)/1000, float64(m.MaxMs)/1000,
+				m.InputTokens, m.OutputTokens))
 		}
 		lines = append(lines, fmt.Sprintf("  Fastest: %s (avg %.1fs)", modelPerf[0].Model, float64(modelPerf[0].AvgMs)/1000))
 	}

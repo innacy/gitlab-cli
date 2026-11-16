@@ -631,11 +631,13 @@ func (r *replState) auditAI(eventID int64, result ai.ChatResult) {
 		return
 	}
 	r.auditor.RecordAIOutput(audit.AIOutput{
-		EventID:    eventID,
-		Provider:   r.aiClient.ProviderName(),
-		Model:      result.Model,
-		CharCount:  len(result.Text),
-		DurationMs: result.DurationMs,
+		EventID:      eventID,
+		Provider:     r.aiClient.ProviderName(),
+		Model:        result.Model,
+		CharCount:    len(result.Text),
+		DurationMs:   result.DurationMs,
+		InputTokens:  result.InputTokens,
+		OutputTokens: result.OutputTokens,
 	})
 }
 
