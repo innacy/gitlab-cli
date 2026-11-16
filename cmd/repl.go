@@ -311,7 +311,14 @@ func RunREPL(cfg *config.AppConfig) {
 		reviews: make(map[string]*reviewEntry),
 	}
 
-	auditor, auditErr := audit.Open(".git-agent/audit")
+	if err := os.MkdirAll(config.Dir(), 0o700); err != nil {
+		output.PrintWarning(fmt.Sprintf("Cannot create %s: %v", config.Dir(), err))
+	}
+	auditDir, notice := config.AuditDir()
+	if notice != "" {
+		output.PrintSuccess(notice)
+	}
+	auditor, auditErr := audit.Open(auditDir)
 	if auditErr != nil {
 		fmt.Fprintf(os.Stderr, "⚠ audit trail disabled: %v\n", auditErr)
 	} else {
@@ -325,7 +332,7 @@ func RunREPL(cfg *config.AppConfig) {
 		AutoComplete:      completer,
 		InterruptPrompt:   "^C",
 		EOFPrompt:         "exit",
-		HistoryFile:       "/tmp/git-agent-history.tmp",
+		HistoryFile:       config.HistoryFile(),
 		HistoryLimit:      500,
 		HistorySearchFold: true,
 	})

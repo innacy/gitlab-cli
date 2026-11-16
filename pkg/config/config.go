@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 
@@ -27,6 +28,9 @@ type AppConfig struct {
 	Teams           []TeamConfig          `mapstructure:"teams" yaml:"teams"`
 	Projects        []string              `mapstructure:"projects" yaml:"projects"`
 	IgnoredProjects []string              `mapstructure:"ignored_projects" yaml:"ignored_projects"`
+
+	// ConfigFile is the config file that was loaded ("" when none was found).
+	ConfigFile string `mapstructure:"-" yaml:"-"`
 }
 
 // GitLabConfig holds GitLab connection settings.
@@ -221,6 +225,7 @@ func loadWithViper(v *viper.Viper, path string) (*AppConfig, error) {
 		v.SetConfigName("config")
 		v.AddConfigPath(".")
 		v.AddConfigPath("./configs")
+		v.AddConfigPath(Dir())
 	}
 
 	setDefaultsOn(v)
@@ -248,6 +253,8 @@ func loadWithViper(v *viper.Viper, path string) (*AppConfig, error) {
 	}
 
 	cfg.normalizeTeams(v)
+	cfg.ConfigFile = v.ConfigFileUsed()
+	cfg.resolveOutputDirs()
 
 	if err := cfg.EnsureOutputDirs(); err != nil {
 		return nil, fmt.Errorf("failed to create output directories: %w", err)
@@ -320,6 +327,21 @@ func (c *AppConfig) normalizeTeams(v *viper.Viper) {
 		}
 	}
 	c.Teams = teams
+}
+
+// resolveOutputDirs makes relative output directories relative to the config
+// file, so outputs land in the same place whatever directory git-agent is run
+// from. Without a config file they stay relative to the working directory.
+func (c *AppConfig) resolveOutputDirs() {
+	if c.ConfigFile == "" {
+		return
+	}
+	base := filepath.Dir(c.ConfigFile)
+	for _, d := range []*string{&c.Review.Output.Directory, &c.Issues.Output.Directory, &c.Other.Directory} {
+		if *d != "" && !filepath.IsAbs(*d) {
+			*d = filepath.Join(base, *d)
+		}
+	}
 }
 
 // EnsureOutputDirs creates all configured output directories if they don't exist.

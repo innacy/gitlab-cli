@@ -74,6 +74,17 @@ cp configs/default.yaml config.yaml
 
 `config.yaml` is gitignored — never commit it.
 
+git-agent uses the first config it finds: `--config <path>`, then `./config.yaml`,
+`./configs/config.yaml`, and finally `~/.config/git-agent/config.yaml` (honours
+`$XDG_CONFIG_HOME`). Keep it in `~/.config/git-agent/` to run git-agent from any
+directory. Relative output directories are resolved against the config file.
+
+Command history and the audit trail (`stats`) live in `~/.config/git-agent/`.
+An audit trail in the old `./.git-agent/audit/` location is moved there on first run.
+
+Any setting can be overridden with a `GITLAB_AI_` environment variable — replace
+dots with underscores, e.g. `GITLAB_AI_GITLAB_BASE_URL`, `GITLAB_AI_AI_PROVIDER`.
+
 ### Minimal setup
 
 ```yaml
