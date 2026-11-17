@@ -144,6 +144,8 @@ func aiWorkdir(t *testing.T, gitlabURL, aiURL string) string {
 	dir := workdir(t, gitlabURL)
 	cfgPath := filepath.Join(dir, "config.yaml")
 	cfg, _ := os.ReadFile(cfgPath)
+	// base_url from a cwd config is ignored (it would receive the key), so
+	// the fake is also passed through the environment; see aiRun.
 	cfg = fmt.Appendf(cfg, "ai:\n  provider: anthropic\n  anthropic:\n    api_key: sk-test\n    model: test-model\n    base_url: %q\n", aiURL)
 	cfg = append(cfg, `review:
   template:
@@ -154,6 +156,13 @@ func aiWorkdir(t *testing.T, gitlabURL, aiURL string) string {
 `...)
 	os.WriteFile(cfgPath, cfg, 0o600)
 	return dir
+}
+
+// aiRun runs commands with the fake Anthropic URL supplied via the env var.
+func aiRun(t *testing.T, dir, aiURL string, commands ...string) string {
+	t.Helper()
+	out, _ := runEnv(t, dir, goodToken, []string{"GITLAB_AI_AI_ANTHROPIC_BASE_URL=" + aiURL}, commands...)
+	return out
 }
 
 func isIntentCall(system string) bool { return strings.Contains(system, "command classifier") }
@@ -187,7 +196,14 @@ func agentCmd(dir, token string) *exec.Cmd {
 // and the exit code.
 func run(t *testing.T, dir, token string, commands ...string) (string, int) {
 	t.Helper()
+	return runEnv(t, dir, token, nil, commands...)
+}
+
+// runEnv is run with extra environment variables.
+func runEnv(t *testing.T, dir, token string, env []string, commands ...string) (string, int) {
+	t.Helper()
 	cmd := agentCmd(dir, token)
+	cmd.Env = append(cmd.Env, env...)
 	cmd.Stdin = strings.NewReader(strings.Join(append(commands, "exit"), "\n") + "\n")
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
@@ -550,9 +566,9 @@ func TestFreeFormQuestionGoesToChat(t *testing.T) {
 		}
 		return "A rebase replays your commits on top of another branch."
 	})
-	out, _ := run(t, aiWorkdir(t, gl.URL, ai.URL), goodToken, "what is a rebase")
-	mustContain(t, out, "A rebase replays your commits",
-		"ai.anthropic.base_url in ", "sends your anthropic API key to 127.0.0.1")
+	out := aiRun(t, aiWorkdir(t, gl.URL, ai.URL), ai.URL, "what is a rebase")
+	mustContain(t, out, "A rebase replays your commits")
+	mustNotContain(t, out, "ignoring ai.anthropic.base_url")
 }
 
 func TestNaturalLanguageIsRoutedToCommand(t *testing.T) {
@@ -560,7 +576,7 @@ func TestNaturalLanguageIsRoutedToCommand(t *testing.T) {
 	ai := newFakeAnthropic(t, func(system, user string) string {
 		return `{"command":"mr-status","args":{"project":"team/backend"},"confidence":0.95}`
 	})
-	out, _ := run(t, aiWorkdir(t, gl.URL, ai.URL), goodToken, "show me open merge requests in backend")
+	out := aiRun(t, aiWorkdir(t, gl.URL, ai.URL), ai.URL, "show me open merge requests in backend")
 	mustContain(t, out, "→ mr-status team/backend", "Open MRs — team/backend", "Add login")
 }
 
@@ -573,7 +589,7 @@ func TestMRReviewSavesFileAndRecordsTokens(t *testing.T) {
 		return "## Summary\n\nAdds a Login stub."
 	})
 	dir := aiWorkdir(t, gl.URL, ai.URL)
-	out, _ := run(t, dir, goodToken, "mr-review team/backend 7", "2", "stats today") // 2 = don't post
+	out := aiRun(t, dir, ai.URL, "mr-review team/backend 7", "2", "stats today") // 2 = don't post
 	mustContain(t, out,
 		"Review saved to:",
 		"Commands run:     1  (0 failed, 100% success)",
@@ -601,8 +617,19 @@ func TestAIErrorIsReported(t *testing.T) {
 	cfg, _ := os.ReadFile(cfgPath)
 	os.WriteFile(cfgPath, []byte(strings.Replace(string(cfg), "sk-test", "sk-wrong", 1)), 0o600)
 
-	out, _ := run(t, dir, goodToken, "mr-review team/backend 7", "stats today")
+	out := aiRun(t, dir, ai.URL, "mr-review team/backend 7", "stats today")
 	mustContain(t, out, "bad key", "(1 failed")
+}
+
+func TestCwdConfigCannotRedirectAIKey(t *testing.T) {
+	gl := newFakeGitLab(t)
+	var hits int
+	ai := newFakeAnthropic(t, func(string, string) string { hits++; return "leaked" })
+	out, _ := run(t, aiWorkdir(t, gl.URL, ai.URL), goodToken, "what is a rebase")
+	mustContain(t, out, "ignoring ai.anthropic.base_url from")
+	if hits != 0 {
+		t.Errorf("API key was sent to the cwd config's base_url (%d requests)", hits)
+	}
 }
 
 // ─── Mutations + audit trail / stats ─────────────────────────────────────────
