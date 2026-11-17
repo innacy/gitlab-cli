@@ -29,6 +29,8 @@ func NewServer(rec *Recorder) *Server {
 	s.mux.HandleFunc("/api/models", s.handleModels)
 	s.mux.HandleFunc("/api/model-stats", s.handleModelStats)
 	s.mux.HandleFunc("/api/model-performance", s.handleModelPerformance)
+	s.mux.HandleFunc("/api/commands", s.handleCommands)
+	s.mux.HandleFunc("/api/projects", s.handleProjects)
 	s.mux.HandleFunc("/", s.handleDashboard)
 	return s
 }
@@ -46,7 +48,7 @@ func (s *Server) Start(openBrowser func(string)) (addr string, shutdown func(), 
 	addr = fmt.Sprintf("http://%s", listener.Addr().String())
 
 	srv := &http.Server{
-		Handler:      s.mux,
+		Handler:      localOnly(s.mux),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  30 * time.Minute,
@@ -66,30 +68,31 @@ func (s *Server) Start(openBrowser func(string)) (addr string, shutdown func(), 
 	return addr, func() { srv.Shutdown(context.Background()) }, nil
 }
 
-func (s *Server) parseDateRange(r *http.Request) (string, string) {
-	now := time.Now().UTC()
-	rangeParam := r.URL.Query().Get("range")
-	dateParam := r.URL.Query().Get("date")
+// localOnly rejects requests whose Host header is not a loopback name. The
+// server only listens on 127.0.0.1, but a web page can still reach it through
+// DNS rebinding (evil.example resolving to 127.0.0.1); the browser then sends
+// Host: evil.example, which this refuses.
+func localOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := r.Host
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+		if host != "127.0.0.1" && host != "localhost" && host != "::1" {
+			http.Error(w, "forbidden host", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 
-	switch rangeParam {
-	case "week":
-		return now.AddDate(0, 0, -7).Format("2006-01-02"), now.Format("2006-01-02")
-	case "month":
-		if dateParam != "" {
-			if parsed, err := time.Parse("2006-01", dateParam); err == nil {
-				return parsed.Format("2006-01-02"), parsed.AddDate(0, 1, -1).Format("2006-01-02")
-			}
-		}
-		return now.AddDate(0, 0, -30).Format("2006-01-02"), now.Format("2006-01-02")
-	case "year":
-		year := r.URL.Query().Get("year")
-		if year == "" {
-			year = fmt.Sprintf("%d", now.Year())
-		}
-		return year + "-01-01", year + "-12-31"
-	default:
-		return now.AddDate(0, 0, -30).Format("2006-01-02"), now.Format("2006-01-02")
+func (s *Server) parseDateRange(r *http.Request) (string, string) {
+	q := r.URL.Query()
+	from, to, _, err := DateRange(q.Get("range"), q.Get("date"), time.Now())
+	if err != nil {
+		from, to, _, _ = DateRange("month", "", time.Now())
 	}
+	return from, to
 }
 
 func (s *Server) writeJSON(w http.ResponseWriter, v interface{}) {
@@ -110,6 +113,8 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 		"mrs_created":     summary.MRsCreated,
 		"mrs_reviewed":    summary.MRsReviewed,
 		"tickets_created": summary.TicketsCreated,
+		"failed":          summary.Failed,
+		"reviews_posted":  summary.ReviewsPosted,
 		"files_written":   summary.FilesWritten,
 		"from":            from,
 		"to":              to,
@@ -177,7 +182,33 @@ func (s *Server) handleModelPerformance(w http.ResponseWriter, r *http.Request) 
 	s.writeJSON(w, perf)
 }
 
+func (s *Server) handleCommands(w http.ResponseWriter, r *http.Request) {
+	from, to := s.parseDateRange(r)
+	rows, err := s.recorder.CommandBreakdown(from, to)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.writeJSON(w, rows)
+}
+
+func (s *Server) handleProjects(w http.ResponseWriter, r *http.Request) {
+	from, to := s.parseDateRange(r)
+	rows, err := s.recorder.ProjectBreakdown(from, to, 10)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.writeJSON(w, rows)
+}
+
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// The page is self-contained; forbid anything external.
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'")
 	w.Write(dashboardHTML)
 }

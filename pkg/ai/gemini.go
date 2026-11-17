@@ -11,10 +11,11 @@ import (
 	"time"
 )
 
-const geminiAPI = "https://generativelanguage.googleapis.com/v1beta/models"
+const geminiHost = "https://generativelanguage.googleapis.com"
 
 // GeminiClient calls the Google Gemini REST API directly via HTTP.
 type GeminiClient struct {
+	BaseURL    string // optional override of the public API host
 	apiKey     string
 	model      string
 	maxTokens  int
@@ -62,8 +63,12 @@ type geminiGenConfig struct {
 }
 
 type geminiResponse struct {
-	Candidates []geminiCandidate `json:"candidates"`
-	Error      *geminiError      `json:"error,omitempty"`
+	Candidates    []geminiCandidate `json:"candidates"`
+	Error         *geminiError      `json:"error,omitempty"`
+	UsageMetadata struct {
+		PromptTokenCount     int `json:"promptTokenCount"`
+		CandidatesTokenCount int `json:"candidatesTokenCount"`
+	} `json:"usageMetadata"`
 }
 
 type geminiCandidate struct {
@@ -106,13 +111,14 @@ func (c *GeminiClient) Chat(ctx context.Context, systemPrompt, userMessage strin
 		return ChatResult{}, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/%s:generateContent?key=%s", geminiAPI, c.model, c.apiKey)
+	url := endpoint(c.BaseURL, geminiHost, fmt.Sprintf("/v1beta/models/%s:generateContent", c.model))
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
 	if err != nil {
 		return ChatResult{}, fmt.Errorf("failed to create request: %w", err)
 	}
 
+	req.Header.Set("x-goog-api-key", c.apiKey) // header, not ?key=, so it never lands in logs or proxies
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
@@ -156,5 +162,6 @@ func (c *GeminiClient) Chat(ctx context.Context, systemPrompt, userMessage strin
 		return ChatResult{}, fmt.Errorf("empty response from Gemini API")
 	}
 
-	return ChatResult{Text: text, Model: c.model, DurationMs: time.Since(start).Milliseconds()}, nil
+	return ChatResult{Text: text, Model: c.model, DurationMs: time.Since(start).Milliseconds(),
+		InputTokens: gemResp.UsageMetadata.PromptTokenCount, OutputTokens: gemResp.UsageMetadata.CandidatesTokenCount}, nil
 }

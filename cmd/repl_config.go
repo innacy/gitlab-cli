@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"gitlab-ai/pkg/config"
 	"gitlab-ai/pkg/output"
 	"gitlab-ai/pkg/platform"
 )
@@ -22,25 +23,23 @@ func (r *replState) handleConfig() {
 	}
 	fmt.Println(p)
 
+	if len(r.cfg.Environments) > 0 {
+		theme.Primary.Print("  Environment:    ")
+		fmt.Printf("%s (available: %s)\n", orNone(r.cfg.Environment), strings.Join(r.cfg.EnvironmentNames(), ", "))
+	}
+
 	theme.Primary.Print("  GitLab URL:     ")
 	fmt.Println(r.cfg.GitLab.BaseURL)
 
 	theme.Primary.Print("  AI Provider:    ")
-	switch r.cfg.AI.Provider {
-	case "anthropic", "claude", "":
-		if r.cfg.AI.Anthropic.APIKey != "" {
-			fmt.Printf("Anthropic (Claude) — %s\n", r.cfg.AI.Anthropic.Model)
-		} else {
-			theme.Warning.Println("anthropic (ANTHROPIC_API_KEY not set)")
-		}
-	case "gemini", "google":
-		if r.cfg.AI.Gemini.APIKey != "" {
-			fmt.Printf("Google Gemini — %s\n", r.cfg.AI.Gemini.Model)
-		} else {
-			theme.Warning.Println("gemini (GEMINI_API_KEY not set)")
-		}
-	default:
+	ai := r.cfg.AI.Resolve()
+	switch {
+	case ai.Provider == "":
 		theme.Warning.Printf("unknown provider %q\n", r.cfg.AI.Provider)
+	case ai.APIKey == "":
+		theme.Warning.Printf("%s — %s (no API key: set ai.%s.api_key or %s)\n", ai.Label, ai.Model, ai.Provider, ai.KeyEnv)
+	default:
+		fmt.Printf("%s — %s (key from %s)\n", ai.Label, ai.Model, ai.KeySource)
 	}
 
 	theme.Primary.Print("  Color Output:   ")
@@ -85,7 +84,11 @@ func (r *replState) handleConfig() {
 
 	supported := platform.SupportedPlatforms()
 	theme.Muted.Printf("  Supported platforms: %s\n", strings.Join(supported, ", "))
-	theme.Muted.Println("  Config: config.yaml (+ env var overrides)")
+	cfgFile := r.cfg.ConfigFile
+	if cfgFile == "" {
+		cfgFile = "(none found — defaults only)"
+	}
+	theme.Muted.Printf("  Config file:         %s (+ GITLAB_AI_* env overrides)\n", cfgFile)
 
 	if r.provider != nil {
 		theme.Muted.Printf("  Active session:      %s (@%s)\n", r.provider.Name(), r.provider.Username())
@@ -100,80 +103,19 @@ func (r *replState) showHelp() {
 	theme.Header.Println("  git-agent — Command Reference")
 	fmt.Println()
 
-	printSection := func(title string, cmds []helpCmd) {
-		theme.Primary.Printf("  %s\n", title)
-		for _, c := range cmds {
-			fmt.Printf("    %-36s %s\n", c.name, c.desc)
+	for _, section := range sectionOrder {
+		theme.Primary.Printf("  %s\n", section)
+		for _, c := range commandTable {
+			if c.section == section {
+				fmt.Printf("    %-40s %s\n", c.synopsis(), c.desc)
+			}
 		}
 		fmt.Println()
 	}
 
-	printSection("Merge Requests", []helpCmd{
-		{"mr-status <project>", "List open MRs"},
-		{"mr-review <project> [mr]", "AI-powered MR review"},
-		{"mr-comment <project> [mr]", "Post review as MR comment"},
-		{"mr-open <project> [branch] [target]", "Create a new MR"},
-		{"mr-merge <project> <mr>", "Merge an MR"},
-		{"mr-approve <project> <mr>", "Approve an MR"},
-		{"mr-unapprove <project> <mr>", "Remove approval"},
-		{"mr-rebase <project> <mr>", "Rebase source branch"},
-		{"mr-update <project> <mr>", "Update MR metadata"},
-		{"mr-close <project> <mr>", "Close an MR"},
-		{"mr-reopen <project> <mr>", "Reopen a closed MR"},
-		{"mr-checks <project> <mr>", "Pipeline status for MR"},
-	})
-
-	printSection("Pipelines / CI", []helpCmd{
-		{"pipeline <project>", "List recent pipelines"},
-		{"pipeline-view <project> <id>", "Pipeline details and jobs"},
-		{"pipeline-logs <project> <job-id>", "Job log output"},
-		{"pipeline-retry <project> <id>", "Retry failed pipeline"},
-		{"pipeline-cancel <project> <id>", "Cancel running pipeline"},
-	})
-
-	printSection("Tickets / Issues", []helpCmd{
-		{"ticket-open [project]", "Create a new ticket"},
-		{"ticket-open-empty", "Quick-create empty ticket (assigned to you)"},
-		{"ticket-close <project> <number>", "Close a ticket"},
-		{"ticket-reopen <project> <number>", "Reopen a ticket"},
-		{"ticket-update <project> <number>", "Update ticket metadata"},
-		{"ticket-search <project>", "Search tickets"},
-		{"tickets", "Generate tickets report"},
-	})
-
-	printSection("Repository", []helpCmd{
-		{"list / projects", "List team projects"},
-		{"diff <project>", "Compare tags or branches"},
-		{"branch-cleanup <project>", "Remove stale branches"},
-		{"release", "Check release status"},
-	})
-
-	printSection("Content Generation", []helpCmd{
-		{"create-ticket-content [project]", "Generate ticket content from diff"},
-		{"create-ticket-desc [project]", "Generate description from linked MRs"},
-		{"create-epic-content [project]", "Generate epic content from diff"},
-	})
-
-	printSection("Workflow", []helpCmd{
-		{"ship", "Full flow: ticket → multi-select folders → commit → push → MR → update ticket"},
-	})
-
-	printSection("Session", []helpCmd{
-		{"start", "Start session"},
-		{"switch-team", "Switch active team"},
-		{"config", "Show current configuration"},
-		{"help", "Show this help"},
-		{"exit", "End session"},
-	})
-
 	theme.Muted.Println("  Any unrecognized input is sent to AI as a question.")
 	theme.Muted.Println("  Tab = auto-complete | Up/Down = history | Ctrl+R = search history")
 	fmt.Println()
-}
-
-type helpCmd struct {
-	name string
-	desc string
 }
 
 func boolStr(b bool) string {
@@ -225,15 +167,10 @@ func (r *replState) handleSwitchTeam() {
 
 func (r *replState) switchTeam(name string) {
 	prev := r.activeTeam
-	r.activeTeam = name
-
-	r.cacheMu.Lock()
-	r.projectCache = nil
-	r.lastRefreshTime = time.Time{}
-	r.cacheMu.Unlock()
-
+	r.resetCache(name)
 	r.startCacheLoad()
 
+	r.rl.SetPrompt(r.prompt())
 	output.PrintSuccess(fmt.Sprintf("Switched team: %s → %s", prev, name))
 
 	pf := r.cfg.ActiveParentFolder(name)
@@ -241,4 +178,83 @@ func (r *replState) switchTeam(name string) {
 		output.PrintSuccess(fmt.Sprintf("Parent folder: %s", pf))
 	}
 	fmt.Println()
+}
+
+// ─── Switch Environment ──────────────────────────────────────────────────────
+
+func (r *replState) handleSwitchEnv(args []string) {
+	names := r.cfg.EnvironmentNames()
+	if len(names) == 0 {
+		output.PrintWarning("No environments configured. Add an 'environments:' section to config.yaml.")
+		return
+	}
+
+	target := ""
+	if len(args) > 0 {
+		target = strings.ToLower(args[0])
+	} else {
+		options := make([]string, len(names))
+		for i, n := range names {
+			options[i] = n
+			if n == r.cfg.Environment {
+				options[i] += "  ← current"
+			}
+		}
+		choice := r.promptForChoice("Switch to environment", options)
+		if choice < 0 {
+			return
+		}
+		target = names[choice]
+	}
+	if target == r.cfg.Environment {
+		output.PrintWarning(fmt.Sprintf("Already on environment '%s'", target))
+		return
+	}
+
+	// Only an explicit --config path is reused as-is; a searched-for config is
+	// searched for again, so it keeps its (untrusted) status.
+	path := ""
+	if r.cfg.Explicit {
+		path = r.cfg.ConfigFile
+	}
+	cfg, err := config.LoadWith(path, target)
+	if err != nil {
+		output.PrintError(err.Error())
+		return
+	}
+	if res := config.Validate(cfg); len(res.Errors) > 0 {
+		output.PrintError(fmt.Sprintf("Environment '%s' is invalid: %s", target, strings.Join(res.Errors, "; ")))
+		return
+	}
+
+	prev := r.cfg.Environment
+	r.cfg = cfg
+	// Everything derived from the old environment is stale. The provider is
+	// replaced by connect, never set to nil, because a background cache load
+	// from the old session may still be running.
+	r.aiClient = nil
+	r.resetCache("")
+
+	output.PrintSuccess(fmt.Sprintf("Switched environment: %s → %s", orNone(prev), target))
+	r.connect()
+	r.rl.SetPrompt(r.prompt())
+}
+
+// resetCache sets the active team, empties the project cache and invalidates
+// in-flight loads. activeTeam is written under cacheMu because background
+// loads read it (filterByTeam) while holding that lock.
+func (r *replState) resetCache(team string) {
+	r.cacheMu.Lock()
+	r.activeTeam = team
+	r.projectCache = nil
+	r.lastRefreshTime = time.Time{}
+	r.cacheGen++
+	r.cacheMu.Unlock()
+}
+
+func orNone(s string) string {
+	if s == "" {
+		return "(base)"
+	}
+	return s
 }

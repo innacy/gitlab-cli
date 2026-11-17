@@ -3,6 +3,16 @@ package config
 import "github.com/spf13/viper"
 
 func setDefaultsOn(v *viper.Viper) {
+	// AutomaticEnv only overrides keys viper already knows, so every key that
+	// should be settable from GITLAB_AI_* needs a default, even an empty one.
+	v.SetDefault("gitlab.token", "")
+	v.SetDefault("gitlab.default_project", "")
+	for _, p := range []string{"anthropic", "gemini", "nvidia"} {
+		v.SetDefault("ai."+p+".api_key", "")
+		v.SetDefault("ai."+p+".fallback_model", "")
+		v.SetDefault("ai."+p+".base_url", "")
+	}
+
 	v.SetDefault("platform", "gitlab")
 
 	v.SetDefault("gitlab.base_url", "https://gitlab.example.com/")
@@ -27,6 +37,16 @@ func setDefaultsOn(v *viper.Viper) {
 	v.SetDefault("ai.nvidia.enable_thinking", false)
 	v.SetDefault("ai.nvidia.reasoning_budget", 16384)
 
+	// Same sections as configs/default.yaml, so mr-review works without a
+	// review: block in config.yaml.
+	v.SetDefault("review.template.sections", []map[string]interface{}{
+		{"name": "Summary", "prompt": "Provide a brief summary of the changes", "required": true},
+		{"name": "Code Quality", "prompt": "Assess code quality, readability, and maintainability", "required": true},
+		{"name": "Security Concerns", "prompt": "Identify any security vulnerabilities or risks", "required": true},
+		{"name": "Performance Impact", "prompt": "Evaluate potential performance implications", "required": false},
+		{"name": "Suggestions", "prompt": "Provide actionable improvement suggestions", "required": true},
+		{"name": "Approval Recommendation", "prompt": "Recommend approve, request changes, or reject with reasoning", "required": true},
+	})
 	v.SetDefault("review.output.directory", "./.data")
 	v.SetDefault("review.output.filename_pattern", "{project}_mr_review_{mr_number}.md")
 	v.SetDefault("review.output.include_metadata", true)
@@ -42,7 +62,6 @@ func setDefaultsOn(v *viper.Viper) {
 	v.SetDefault("merge.remove_source_branch", true)
 
 	v.SetDefault("cli.color_output", true)
-	v.SetDefault("cli.markdown_rendering", true)
 	v.SetDefault("cli.verbose", false)
 	v.SetDefault("cli.confirm_before_post", true)
 	v.SetDefault("cli.non_interactive", false)

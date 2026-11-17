@@ -12,10 +12,11 @@ import (
 	"time"
 )
 
-const nvidiaAPI = "https://integrate.api.nvidia.com/v1/chat/completions"
+const nvidiaHost = "https://integrate.api.nvidia.com"
 
 // NvidiaClient calls the NVIDIA NIM API (OpenAI-compatible endpoint).
 type NvidiaClient struct {
+	BaseURL         string // optional override of the public API host
 	apiKey          string
 	model           string
 	maxTokens       int
@@ -82,6 +83,10 @@ type openAIMessage struct {
 type openAIChatResponse struct {
 	Choices []openAIChoice  `json:"choices"`
 	Error   *openAIAPIError `json:"error,omitempty"`
+	Usage   struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+	} `json:"usage"`
 }
 
 type openAIChoice struct {
@@ -167,7 +172,7 @@ func (c *NvidiaClient) Chat(ctx context.Context, systemPrompt, userMessage strin
 			}
 		}
 
-		req, err := http.NewRequestWithContext(ctx, "POST", nvidiaAPI, bytes.NewReader(body))
+		req, err := http.NewRequestWithContext(ctx, "POST", endpoint(c.BaseURL, nvidiaHost, "/v1/chat/completions"), bytes.NewReader(body))
 		if err != nil {
 			return ChatResult{}, fmt.Errorf("failed to create request: %w", err)
 		}
@@ -231,7 +236,8 @@ func (c *NvidiaClient) Chat(ctx context.Context, systemPrompt, userMessage strin
 			return ChatResult{}, fmt.Errorf("empty response from NVIDIA API")
 		}
 
-		return ChatResult{Text: text, Model: c.model, DurationMs: time.Since(start).Milliseconds()}, nil
+		return ChatResult{Text: text, Model: c.model, DurationMs: time.Since(start).Milliseconds(),
+			InputTokens: chatResp.Usage.PromptTokens, OutputTokens: chatResp.Usage.CompletionTokens}, nil
 	}
 
 	return ChatResult{}, fmt.Errorf("NVIDIA API exhausted %d retries: %w", maxRetries, lastErr)

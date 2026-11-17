@@ -1,7 +1,12 @@
 package cmd
 
 import (
+	"bytes"
+	"encoding/csv"
+	"encoding/json"
 	"fmt"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,36 +33,15 @@ func (r *replState) handleStats(args []string) {
 	case "dashboard":
 		r.handleStatsDashboard()
 		return
+	case "export":
+		r.handleStatsExport(args[1:])
+		return
 	}
 
-	var from, to string
-	now := time.Now().UTC()
-	label := ""
-
-	switch subCmd {
-	case "week":
-		from = now.AddDate(0, 0, -7).Format("2006-01-02")
-		to = now.Format("2006-01-02")
-		label = "Last 7 Days"
-	case "month":
-		if dateArg != "" {
-			parsed, err := time.Parse("2006-01", dateArg)
-			if err != nil {
-				output.PrintError(fmt.Sprintf("Invalid date format: %s (use YYYY-MM)", dateArg))
-				return
-			}
-			from = parsed.Format("2006-01-02")
-			to = parsed.AddDate(0, 1, -1).Format("2006-01-02")
-			label = parsed.Format("January 2006")
-		} else {
-			from = now.AddDate(0, 0, -30).Format("2006-01-02")
-			to = now.Format("2006-01-02")
-			label = "Last 30 Days"
-		}
-	default:
-		from = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
-		to = now.Format("2006-01-02")
-		label = now.Format("January 2006")
+	from, to, label, err := audit.DateRange(subCmd, dateArg, time.Now())
+	if err != nil {
+		output.PrintError(err.Error())
+		return
 	}
 
 	summary, err := r.auditor.Summary(from, to)
@@ -75,12 +59,35 @@ func (r *replState) handleStats(args []string) {
 	lines := []string{
 		fmt.Sprintf("Activity — %s", label),
 		"",
-		fmt.Sprintf("Commands run:     %d", summary.TotalEvents),
+		fmt.Sprintf("Commands run:     %d%s", summary.TotalEvents, successRate(summary)),
 		fmt.Sprintf("AI generations:   %d", summary.AIGenerations),
 		fmt.Sprintf("MRs created:      %d", summary.MRsCreated),
 		fmt.Sprintf("MRs reviewed:     %d", summary.MRsReviewed),
 		fmt.Sprintf("Tickets created:  %d", summary.TicketsCreated),
 		fmt.Sprintf("Files written:    %d", summary.FilesWritten),
+	}
+	if summary.MRsReviewed > 0 {
+		lines = append(lines, fmt.Sprintf("Reviews posted:   %d of %d (%d%%)",
+			summary.ReviewsPosted, summary.MRsReviewed, summary.ReviewsPosted*100/summary.MRsReviewed))
+	}
+	if days, err := r.auditor.DailyCounts(from, to); err == nil && len(days) > 1 {
+		lines = append(lines, "", "Trend:  "+output.Sparkline(days, 52))
+	}
+	if cmds, _ := r.auditor.CommandBreakdown(from, to); len(cmds) > 0 {
+		lines = append(lines, "", "Top Commands:")
+		for _, c := range cmds[:min(len(cmds), 8)] {
+			line := fmt.Sprintf("  %-22s %4d", c.Command, c.Count)
+			if c.Failed > 0 {
+				line += fmt.Sprintf("  (%d failed)", c.Failed)
+			}
+			lines = append(lines, line)
+		}
+	}
+	if projects, _ := r.auditor.ProjectBreakdown(from, to, 5); len(projects) > 0 {
+		lines = append(lines, "", "Top Projects:")
+		for _, p := range projects {
+			lines = append(lines, fmt.Sprintf("  %-30s %4d", p.Project, p.Count))
+		}
 	}
 
 	if len(models) > 0 {
@@ -100,11 +107,12 @@ func (r *replState) handleStats(args []string) {
 
 	if len(modelPerf) > 0 {
 		lines = append(lines, "", "Model Performance:")
-		lines = append(lines, fmt.Sprintf("  %-28s %6s  %6s  %6s  %6s", "Model", "Calls", "Avg", "Min", "Max"))
+		lines = append(lines, fmt.Sprintf("  %-28s %6s  %6s  %6s  %6s  %9s  %9s", "Model", "Calls", "Avg", "Min", "Max", "Tokens in", "Tokens out"))
 		for _, m := range modelPerf {
-			lines = append(lines, fmt.Sprintf("  %-28s %6d  %5.1fs  %5.1fs  %5.1fs",
+			lines = append(lines, fmt.Sprintf("  %-28s %6d  %5.1fs  %5.1fs  %5.1fs  %9d  %9d",
 				m.Model, m.Count,
-				float64(m.AvgMs)/1000, float64(m.MinMs)/1000, float64(m.MaxMs)/1000))
+				float64(m.AvgMs)/1000, float64(m.MinMs)/1000, float64(m.MaxMs)/1000,
+				m.InputTokens, m.OutputTokens))
 		}
 		lines = append(lines, fmt.Sprintf("  Fastest: %s (avg %.1fs)", modelPerf[0].Model, float64(modelPerf[0].AvgMs)/1000))
 	}
@@ -177,9 +185,74 @@ func (r *replState) handleStatsDashboard() {
 
 	r.rl.SetPrompt("")
 	r.rl.Readline()
-	r.rl.SetPrompt("git-agent> ")
+	r.rl.SetPrompt(r.prompt())
 	r.resetIdle()
 	shutdown()
 	output.PrintSuccess("Dashboard stopped.")
 	fmt.Println()
+}
+
+func successRate(s *audit.SummaryResult) string {
+	if s.TotalEvents == 0 {
+		return ""
+	}
+	return fmt.Sprintf("  (%d failed, %d%% success)", s.Failed, (s.TotalEvents-s.Failed)*100/s.TotalEvents)
+}
+
+// handleStatsExport writes the raw events of a range to a CSV or JSON file:
+// stats export csv|json [today|week|month [YYYY-MM]|year [YYYY]]
+func (r *replState) handleStatsExport(args []string) {
+	if len(args) == 0 || (args[0] != "csv" && args[0] != "json") {
+		output.PrintError("Usage: stats export csv|json [today|week|month [YYYY-MM]|year [YYYY]]")
+		return
+	}
+	format := args[0]
+	rangeName, rangeArg := "month", ""
+	if len(args) > 1 {
+		rangeName = strings.ToLower(args[1])
+	}
+	if len(args) > 2 {
+		rangeArg = args[2]
+	}
+	from, to, _, err := audit.DateRange(rangeName, rangeArg, time.Now())
+	if err != nil {
+		output.PrintError(err.Error())
+		return
+	}
+	events, err := r.auditor.Events(from, to)
+	if err != nil {
+		output.PrintError(fmt.Sprintf("Failed to load events: %v", err))
+		return
+	}
+
+	var buf bytes.Buffer
+	if format == "json" {
+		enc := json.NewEncoder(&buf)
+		enc.SetIndent("", "  ")
+		if events == nil {
+			events = []audit.EventRow{}
+		}
+		err = enc.Encode(events)
+	} else {
+		w := csv.NewWriter(&buf)
+		w.Write([]string{"timestamp", "command", "category", "project", "duration_ms", "success"})
+		for _, e := range events {
+			w.Write([]string{e.Timestamp, e.Command, e.Category, e.Project,
+				strconv.FormatInt(e.DurationMs, 10), strconv.FormatBool(e.Success)})
+		}
+		w.Flush()
+		err = w.Error()
+	}
+	if err != nil {
+		output.PrintError(fmt.Sprintf("Failed to encode events: %v", err))
+		return
+	}
+
+	filename := filepath.Join(r.cfg.Other.Directory, fmt.Sprintf("stats_%s_%s.%s", from, to, format))
+	if err := writeFile(filename, buf.String()); err != nil {
+		output.PrintError(fmt.Sprintf("Failed to write export: %v", err))
+		return
+	}
+	output.PrintSuccess(fmt.Sprintf("Exported %d events (%s → %s)", len(events), from, to))
+	output.PrintFilePath(filename)
 }

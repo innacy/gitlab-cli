@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fatih/color"
 	"golang.org/x/term"
 
 	"gitlab-ai/internal/models"
@@ -42,10 +41,9 @@ func (r *replState) interactiveSelect(title string, options []string) int {
 	maxOptLen := width - prefixLen
 	display := make([]string, len(options))
 	for i, opt := range options {
-		if maxOptLen > 3 && len(opt) > maxOptLen {
-			display[i] = opt[:maxOptLen-3] + "..."
-		} else {
-			display[i] = opt
+		display[i] = opt
+		if maxOptLen > 3 {
+			display[i] = output.Truncate(opt, maxOptLen)
 		}
 	}
 
@@ -142,14 +140,14 @@ func (r *replState) interactiveSelect(title string, options []string) int {
 // fallbackChoice is used when the terminal doesn't support raw mode.
 func (r *replState) fallbackChoice(title string, options []string) int {
 	fmt.Println()
-	color.New(color.FgCyan, color.Bold).Println(title)
+	output.GetTheme().Header.Println(title)
 	for i, opt := range options {
 		fmt.Printf("  %d. %s\n", i+1, opt)
 	}
 	fmt.Println()
 
 	r.rl.SetPrompt("choice> ")
-	defer r.rl.SetPrompt("git-agent> ")
+	defer r.rl.SetPrompt(r.prompt())
 
 	line, err := r.rl.Readline()
 	r.resetIdle()
@@ -217,10 +215,10 @@ func (r *replState) promptForProject(title string) string {
 		}
 
 		fmt.Println()
-		color.New(color.FgCyan, color.Bold).Println("  Enter project name or path (Tab to auto-complete):")
+		output.GetTheme().Header.Println("  Enter project name or path (Tab to auto-complete):")
 
 		r.rl.SetPrompt("project> ")
-		defer r.rl.SetPrompt("git-agent> ")
+		defer r.rl.SetPrompt(r.prompt())
 
 		line, err := r.rl.Readline()
 		r.resetIdle()
@@ -234,7 +232,7 @@ func (r *replState) promptForProject(title string) string {
 
 func (r *replState) promptForNumber(label string) int {
 	r.rl.SetPrompt(fmt.Sprintf("%s> ", label))
-	defer r.rl.SetPrompt("git-agent> ")
+	defer r.rl.SetPrompt(r.prompt())
 
 	line, err := r.rl.Readline()
 	r.resetIdle()
@@ -371,6 +369,16 @@ func (r *replState) promptForYesNo(question string) bool {
 	return choice == 0
 }
 
+// confirm asks before an irreversible GitLab change. auto_confirm skips it;
+// declining is not an error.
+func (r *replState) confirm(question string) bool {
+	if r.promptForYesNo(question) {
+		return true
+	}
+	output.PrintWarning("Cancelled.")
+	return false
+}
+
 // promptForYesNoPost is for "post/publish" confirmations that respect confirm_before_post config.
 // When confirm_before_post is false, auto-confirms without prompting.
 func (r *replState) promptForYesNoPost(question string) bool {
@@ -389,7 +397,7 @@ func (r *replState) promptForYesNoSafe(question string) bool {
 
 func (r *replState) promptForText(label string) string {
 	r.rl.SetPrompt(fmt.Sprintf("%s> ", label))
-	defer r.rl.SetPrompt("git-agent> ")
+	defer r.rl.SetPrompt(r.prompt())
 
 	line, err := r.rl.Readline()
 	r.resetIdle()

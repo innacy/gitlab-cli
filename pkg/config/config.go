@@ -3,7 +3,10 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
+	"sort"
+	"strings"
 
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/viper"
@@ -26,7 +29,26 @@ type AppConfig struct {
 	Teams           []TeamConfig          `mapstructure:"teams" yaml:"teams"`
 	Projects        []string              `mapstructure:"projects" yaml:"projects"`
 	IgnoredProjects []string              `mapstructure:"ignored_projects" yaml:"ignored_projects"`
+
+	// Environments are named overlays (any subset of the keys above) merged
+	// over the base config; DefaultEnvironment picks one when --env is unset.
+	Environments       map[string]interface{} `mapstructure:"environments" yaml:"environments"`
+	DefaultEnvironment string                 `mapstructure:"default_environment" yaml:"default_environment"`
+
+	// ConfigFile is the config file that was loaded ("" when none was found).
+	ConfigFile string `mapstructure:"-" yaml:"-"`
+	// Environment is the active environment ("" when none).
+	Environment string `mapstructure:"-" yaml:"-"`
+
+	// Explicit is true when the file was given with --config rather than found
+	// by searching; reloads (switch-env) must keep searching when it is false.
+	Explicit bool `mapstructure:"-" yaml:"-"`
+
+	ignored []string // settings dropped at load time, see AIRedirectWarnings
 }
+
+// EnvironmentNames returns the configured environment names, sorted.
+func (c *AppConfig) EnvironmentNames() []string { return sortedKeys(c.Environments) }
 
 // GitLabConfig holds GitLab connection settings.
 type GitLabConfig struct {
@@ -49,6 +71,7 @@ type AIConfig struct {
 
 // NvidiaConfig holds NVIDIA NIM-specific settings.
 type NvidiaConfig struct {
+	BaseURL         string  `mapstructure:"base_url" yaml:"base_url"` // optional API host override (proxy, tests)
 	APIKey          string  `mapstructure:"api_key" yaml:"api_key"`
 	APIKeyEnv       string  `mapstructure:"api_key_env" yaml:"api_key_env"`
 	Model           string  `mapstructure:"model" yaml:"model"`
@@ -62,6 +85,7 @@ type NvidiaConfig struct {
 
 // GeminiConfig holds Google Gemini-specific settings.
 type GeminiConfig struct {
+	BaseURL       string `mapstructure:"base_url" yaml:"base_url"` // optional API host override (proxy, tests)
 	APIKey        string `mapstructure:"api_key" yaml:"api_key"`
 	APIKeyEnv     string `mapstructure:"api_key_env" yaml:"api_key_env"`
 	Model         string `mapstructure:"model" yaml:"model"`
@@ -71,6 +95,7 @@ type GeminiConfig struct {
 
 // AnthropicConfig holds Anthropic-specific settings.
 type AnthropicConfig struct {
+	BaseURL       string  `mapstructure:"base_url" yaml:"base_url"` // optional API host override (proxy, tests)
 	APIKey        string  `mapstructure:"api_key" yaml:"api_key"`
 	APIKeyEnv     string  `mapstructure:"api_key_env" yaml:"api_key_env"`
 	Model         string  `mapstructure:"model" yaml:"model"`
@@ -135,7 +160,6 @@ type MergeConfig struct {
 // CLIConfig holds CLI behavior settings.
 type CLIConfig struct {
 	ColorOutput        bool   `mapstructure:"color_output" yaml:"color_output"`
-	MarkdownRendering  bool   `mapstructure:"markdown_rendering" yaml:"markdown_rendering"`
 	Verbose            bool   `mapstructure:"verbose" yaml:"verbose"`
 	ConfirmBeforePost  bool   `mapstructure:"confirm_before_post" yaml:"confirm_before_post"`
 	NonInteractive     bool   `mapstructure:"non_interactive" yaml:"non_interactive"`
@@ -201,35 +225,58 @@ func (c *AppConfig) ActiveIgnoredProjects(teamName string) []string {
 }
 
 // Load reads configuration from YAML file and environment variables.
-func Load() (*AppConfig, error) {
-	v := viper.New()
-	return loadWithViper(v, "")
-}
+func Load() (*AppConfig, error) { return LoadWith("", "") }
 
 // LoadFrom reads configuration from a specific YAML file path.
-func LoadFrom(path string) (*AppConfig, error) {
+func LoadFrom(path string) (*AppConfig, error) { return LoadWith(path, "") }
+
+// LoadWith loads the config at path (searched for when "") with the named
+// environment applied ("" means default_environment, if set).
+func LoadWith(path, env string) (*AppConfig, error) {
 	v := viper.New()
-	v.SetConfigFile(path)
-	return loadWithViper(v, path)
+	if path != "" {
+		v.SetConfigFile(path)
+	}
+	return loadWithViper(v, path, env)
 }
 
-func loadWithViper(v *viper.Viper, path string) (*AppConfig, error) {
+func loadWithViper(v *viper.Viper, path, env string) (*AppConfig, error) {
 	v.SetConfigType("yaml")
 
 	if path == "" {
 		v.SetConfigName("config")
 		v.AddConfigPath(".")
 		v.AddConfigPath("./configs")
+		if filepath.IsAbs(Dir()) {
+			v.AddConfigPath(Dir())
+		}
 	}
 
 	setDefaultsOn(v)
 
 	v.SetEnvPrefix("GITLAB_AI")
+	// Nested keys map to env vars with "_": gitlab.base_url → GITLAB_AI_GITLAB_BASE_URL.
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
 	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
 			return nil, fmt.Errorf("error reading config file: %w", err)
+		}
+	}
+
+	if env == "" {
+		env = v.GetString("default_environment")
+	}
+	if env != "" {
+		env = strings.ToLower(env) // viper lowercases map keys
+		overlay, ok := v.Get("environments." + env).(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("unknown environment %q (configured: %s)", env,
+				strings.Join(sortedKeys(v.GetStringMap("environments")), ", "))
+		}
+		if err := v.MergeConfigMap(overlay); err != nil {
+			return nil, fmt.Errorf("apply environment %q: %w", env, err)
 		}
 	}
 
@@ -245,6 +292,11 @@ func loadWithViper(v *viper.Viper, path string) (*AppConfig, error) {
 	}
 
 	cfg.normalizeTeams(v)
+	cfg.ConfigFile = v.ConfigFileUsed()
+	cfg.Environment = env
+	cfg.resolveOutputDirs()
+	cfg.Explicit = path != ""
+	cfg.dropUntrustedAIBaseURLs(cfg.Explicit)
 
 	if err := cfg.EnsureOutputDirs(); err != nil {
 		return nil, fmt.Errorf("failed to create output directories: %w", err)
@@ -317,6 +369,30 @@ func (c *AppConfig) normalizeTeams(v *viper.Viper) {
 		}
 	}
 	c.Teams = teams
+}
+
+func sortedKeys(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// resolveOutputDirs makes relative output directories relative to the config
+// file, so outputs land in the same place whatever directory git-agent is run
+// from. Without a config file they stay relative to the working directory.
+func (c *AppConfig) resolveOutputDirs() {
+	if c.ConfigFile == "" {
+		return
+	}
+	base := filepath.Dir(c.ConfigFile)
+	for _, d := range []*string{&c.Review.Output.Directory, &c.Issues.Output.Directory, &c.Other.Directory} {
+		if *d != "" && !filepath.IsAbs(*d) {
+			*d = filepath.Join(base, *d)
+		}
+	}
 }
 
 // EnsureOutputDirs creates all configured output directories if they don't exist.

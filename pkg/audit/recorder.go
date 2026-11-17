@@ -14,7 +14,13 @@ import (
 const (
 	CategoryAIGeneration   = "ai_generation"
 	CategoryGitLabMutation = "gitlab_mutation"
-	CategoryFileWrite      = "file_write"
+	CategoryRead           = "read"
+
+	// Side effects, recorded under the command that caused them. They are
+	// not commands and are excluded from command counts.
+	CategoryFileWrite     = "file_write"
+	CategoryMRCreated     = "mr_created"
+	CategoryTicketCreated = "ticket_created"
 
 	OutcomeAccepted  = "accepted"
 	OutcomeEdited    = "edited"
@@ -31,11 +37,13 @@ type Event struct {
 }
 
 type AIOutput struct {
-	EventID    int64
-	Provider   string
-	Model      string
-	CharCount  int
-	DurationMs int64
+	EventID      int64
+	Provider     string
+	Model        string
+	CharCount    int
+	DurationMs   int64
+	InputTokens  int
+	OutputTokens int
 }
 
 type Recorder struct {
@@ -78,7 +86,7 @@ func (r *Recorder) Close() error {
 }
 
 func (r *Recorder) Record(evt Event) (int64, error) {
-	now := time.Now().UTC()
+	now := time.Now()
 	var metaJSON []byte
 	if evt.Metadata != nil {
 		metaJSON, _ = json.Marshal(evt.Metadata)
@@ -90,8 +98,8 @@ func (r *Recorder) Record(evt Event) (int64, error) {
 	result, err := r.db.Exec(
 		`INSERT INTO events (timestamp, date, command, category, project, duration_ms, success, metadata)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		now.Format(time.RFC3339),
-		now.Format("2006-01-02"),
+		now.UTC().Format(time.RFC3339), // timestamp: UTC, compared by SummarySince
+		now.Format("2006-01-02"),       // date: local, so "today" matches the wall clock
 		evt.Command,
 		evt.Category,
 		evt.Project,
@@ -105,10 +113,19 @@ func (r *Recorder) Record(evt Event) (int64, error) {
 	return result.LastInsertId()
 }
 
+// Finish stores a command's final duration and outcome on the event that was
+// recorded when it started.
+func (r *Recorder) Finish(eventID, durationMs int64, success bool) error {
+	_, err := r.db.Exec(`UPDATE events SET duration_ms = ?, success = ? WHERE id = ?`,
+		durationMs, success, eventID)
+	return err
+}
+
 func (r *Recorder) RecordAIOutput(out AIOutput) error {
 	_, err := r.db.Exec(
-		`INSERT INTO ai_outputs (event_id, provider, model, char_count, duration_ms) VALUES (?, ?, ?, ?, ?)`,
-		out.EventID, out.Provider, out.Model, out.CharCount, out.DurationMs,
+		`INSERT INTO ai_outputs (event_id, provider, model, char_count, duration_ms, input_tokens, output_tokens)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		out.EventID, out.Provider, out.Model, out.CharCount, out.DurationMs, out.InputTokens, out.OutputTokens,
 	)
 	return err
 }

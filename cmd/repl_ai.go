@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -19,40 +18,37 @@ func (r *replState) ensureAI() error {
 		return nil
 	}
 
-	provider := strings.ToLower(r.cfg.AI.Provider)
+	resolved := r.cfg.AI.Resolve()
+	apiKey := resolved.APIKey
 
 	timeout := time.Duration(r.cfg.AI.TimeoutSeconds) * time.Second
 
-	switch provider {
-	case "anthropic", "claude", "":
+	switch resolved.Provider {
+	case "anthropic":
 		cfg := r.cfg.AI.Anthropic
-		apiKey := cfg.APIKey
-		if apiKey == "" && cfg.APIKeyEnv != "" {
-			apiKey = os.Getenv(cfg.APIKeyEnv)
-		}
 		if apiKey == "" {
 			return fmt.Errorf("Anthropic API key not configured.\n  Set 'ai.anthropic.api_key' in config.yaml\n  Or export %s environment variable.\n  Get your key at: https://console.anthropic.com/settings/keys", cfg.APIKeyEnv)
 		}
 		primary := ai.NewAnthropicClient(apiKey, cfg.Model, cfg.MaxTokens, timeout)
+		primary.BaseURL = cfg.BaseURL
 		if cfg.FallbackModel != "" {
 			fallback := ai.NewAnthropicClient(apiKey, cfg.FallbackModel, cfg.MaxTokens, timeout)
+			fallback.BaseURL = cfg.BaseURL
 			r.aiClient = ai.NewFallbackClient(primary, fallback)
 		} else {
 			r.aiClient = primary
 		}
 
-	case "gemini", "google":
+	case "gemini":
 		cfg := r.cfg.AI.Gemini
-		apiKey := cfg.APIKey
-		if apiKey == "" && cfg.APIKeyEnv != "" {
-			apiKey = os.Getenv(cfg.APIKeyEnv)
-		}
 		if apiKey == "" {
 			return fmt.Errorf("Gemini API key not configured.\n  Set 'ai.gemini.api_key' in config.yaml\n  Or export %s environment variable.\n  Get your key at: https://aistudio.google.com/apikey", cfg.APIKeyEnv)
 		}
 		primary := ai.NewGeminiClient(apiKey, cfg.Model, cfg.MaxTokens, timeout)
+		primary.BaseURL = cfg.BaseURL
 		if cfg.FallbackModel != "" {
 			fallback := ai.NewGeminiClient(apiKey, cfg.FallbackModel, cfg.MaxTokens, timeout)
+			fallback.BaseURL = cfg.BaseURL
 			r.aiClient = ai.NewFallbackClient(primary, fallback)
 		} else {
 			r.aiClient = primary
@@ -60,10 +56,6 @@ func (r *replState) ensureAI() error {
 
 	case "nvidia":
 		cfg := r.cfg.AI.Nvidia
-		apiKey := cfg.APIKey
-		if apiKey == "" && cfg.APIKeyEnv != "" {
-			apiKey = os.Getenv(cfg.APIKeyEnv)
-		}
 		if apiKey == "" {
 			return fmt.Errorf("NVIDIA API key not configured.\n  Set 'ai.nvidia.api_key' in config.yaml\n  Or export %s environment variable.\n  Get your key at: https://build.nvidia.com/", cfg.APIKeyEnv)
 		}
@@ -75,8 +67,10 @@ func (r *replState) ensureAI() error {
 			Stream:          false,
 		}
 		primary := ai.NewNvidiaClient(apiKey, cfg.Model, cfg.MaxTokens, timeout, opts)
+		primary.BaseURL = cfg.BaseURL
 		if cfg.FallbackModel != "" {
 			fallback := ai.NewNvidiaClient(apiKey, cfg.FallbackModel, cfg.MaxTokens, timeout, opts)
+			fallback.BaseURL = cfg.BaseURL
 			r.aiClient = ai.NewFallbackClient(primary, fallback)
 		} else {
 			r.aiClient = primary
@@ -179,9 +173,7 @@ func (r *replState) enhanceTicketDescription(userContext string) (string, string
 	title := strings.TrimSpace(lines[0])
 	title = strings.TrimPrefix(title, "# ")
 	title = strings.TrimPrefix(title, "## ")
-	if len(title) > 72 {
-		title = strings.TrimSpace(title[:72])
-	}
+	title = strings.TrimSpace(output.Cut(title, 72))
 
 	description := ""
 	if len(lines) > 1 {
@@ -257,53 +249,7 @@ func (r *replState) askAI(prompt string) (string, error) {
 	systemPrompt := `You are a helpful AI assistant integrated into the gitlab-ai CLI tool. Answer questions clearly and concisely.
 
 This CLI tool provides the following commands:
-
-Merge Requests:
-- mr-status  <project>                   — List open MRs
-- mr-review  <project> [mr]              — AI-powered MR review
-- mr-comment <project> [mr]              — Post review as MR comment
-- mr-open    <project> [branch] [target] — Create a new MR
-- mr-merge   <project> <mr>              — Merge an MR
-- mr-approve <project> <mr>              — Approve an MR
-- mr-unapprove <project> <mr>            — Remove approval
-- mr-rebase  <project> <mr>              — Rebase source branch
-- mr-update  <project> <mr>              — Update MR metadata
-- mr-close   <project> <mr>              — Close an MR
-- mr-reopen  <project> <mr>              — Reopen a closed MR
-- mr-checks  <project> <mr>              — Pipeline status for MR
-
-Pipelines / CI:
-- pipeline        <project>              — List recent pipelines
-- pipeline-view   <project> <id>         — Pipeline details and jobs
-- pipeline-logs   <project> <job-id>     — Job log output
-- pipeline-retry  <project> <id>         — Retry failed pipeline
-- pipeline-cancel <project> <id>         — Cancel running pipeline
-
-Tickets / Issues:
-- ticket-open   [project]                — Create a new ticket
-- ticket-close  <project> <number>       — Close a ticket
-- ticket-reopen <project> <number>       — Reopen a ticket
-- ticket-update <project> <number>       — Update ticket metadata
-- ticket-search <project>                — Search tickets
-- tickets                                — Generate tickets report
-
-Repository:
-- list / projects                        — List team projects
-- diff <project>                         — Compare tags or branches
-- branch-cleanup <project>               — Remove stale branches
-- release                                — Check release status
-
-Content Generation:
-- create-ticket-content [project]        — Generate ticket content from branch diff
-- create-ticket-desc    [project]        — Generate/update ticket description from linked MRs
-- create-epic-content   [project]        — Generate epic content from diff
-
-Session:
-- start                                  — Start session
-- config                                 — Show current configuration
-- help                                   — Show available commands
-- exit                                   — End session
-
+` + commandListText() + `
 Tips you can share:
 - Tab auto-completes commands and project names.
 - Arrow keys navigate history. Ctrl+R searches history.

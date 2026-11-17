@@ -16,39 +16,11 @@ type intentResult struct {
 	Confidence float64           `json:"confidence"`
 }
 
-const intentSystemPrompt = `You are a command classifier for git-agent CLI. Given user input, determine which command they want and extract arguments.
+func intentSystemPrompt() string {
+	return `You are a command classifier for git-agent CLI. Given user input, determine which command they want and extract arguments.
 
 Available commands:
-- mr-review <project> [mr-number] — AI-powered MR review
-- mr-status <project> — List open MRs
-- mr-open <project> [branch] [target] — Create a new MR
-- mr-merge <project> <mr-number> — Merge an MR
-- mr-approve <project> <mr-number> — Approve an MR
-- mr-comment <project> [mr-number] — Post review as MR comment
-- mr-checks <project> <mr-number> — Pipeline status for MR
-- mr-update <project> <mr-number> — Update MR metadata
-- mr-close <project> <mr-number> — Close an MR
-- mr-reopen <project> <mr-number> — Reopen a closed MR
-- pipeline <project> — List recent pipelines
-- pipeline-view <project> <id> — View pipeline details
-- pipeline-logs <project> <job-id> — Show job log output
-- pipeline-retry <project> <id> — Retry a failed pipeline
-- ticket-open [project] — Create a new ticket
-- ticket-close <project> <number> — Close a ticket
-- ticket-search <project> — Search tickets
-- tickets — Generate tickets report
-- create-ticket-content [project] — Generate ticket content from diff
-- create-ticket-desc [project] — Generate description from linked MRs
-- create-epic-content [project] — Generate epic content from diff
-- diff <project> — Compare tags or branches
-- branch-cleanup <project> — Remove stale branches
-- release — Check release status
-- list — List team projects
-- ship — Full flow: ticket → multi-select folders → commit → MR → update ticket
-- config — Show configuration
-- help — Show commands
-- exit — End session
-
+` + commandListText() + `
 Respond with ONLY valid JSON (no markdown fences):
 {"command":"<command-name>","args":{"project":"...","mr":"..."},"confidence":0.0-1.0}
 
@@ -60,6 +32,7 @@ Rules:
 - Extract project names, MR numbers, branch names from natural language
 - "latest" or "last" MR means omit mr number (interactive picker will handle it)
 - If unsure which command, set lower confidence`
+}
 
 func (r *replState) classifyIntent(input string) *intentResult {
 	if r.aiClient == nil {
@@ -71,7 +44,7 @@ func (r *replState) classifyIntent(input string) *intentResult {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	chatResult, err := r.aiClient.Chat(ctx, intentSystemPrompt, input)
+	chatResult, err := r.aiClient.Chat(ctx, intentSystemPrompt(), input)
 	if err != nil {
 		return nil
 	}
@@ -91,21 +64,6 @@ func (r *replState) classifyIntent(input string) *intentResult {
 	return &result
 }
 
-var knownCommands = map[string]bool{
-	"start": true, "list": true, "projects": true,
-	"mr-review": true, "mr-comment": true, "mr-status": true, "mr-checks": true,
-	"mr-open": true, "mr-merge": true, "mr-approve": true, "mr-unapprove": true,
-	"mr-rebase": true, "mr-update": true, "mr-close": true, "mr-reopen": true,
-	"pipeline": true, "pipeline-view": true, "pipeline-logs": true,
-	"pipeline-retry": true, "pipeline-cancel": true,
-	"diff": true, "branch-cleanup": true, "tickets": true,
-	"ticket-open": true, "ticket-open-empty": true, "ship": true,
-	"ticket-close": true, "ticket-reopen": true, "ticket-update": true,
-	"ticket-search": true, "create-ticket-desc": true, "tickets-black": true,
-	"create-ticket-content": true, "create-epic-content": true,
-	"release": true, "config": true, "help": true, "exit": true,
-}
-
 func (r *replState) handleIntentOrChat(line string) {
 	intent := r.classifyIntent(line)
 	if intent == nil || intent.Command == "chat" || intent.Command == "" {
@@ -113,7 +71,7 @@ func (r *replState) handleIntentOrChat(line string) {
 		return
 	}
 
-	if !knownCommands[intent.Command] {
+	if lookupCommand(intent.Command) == nil {
 		r.handleChat(line)
 		return
 	}

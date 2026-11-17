@@ -260,10 +260,7 @@ func buildTicketsSummaryForContext(result *models.IssueListResult) string {
 		}
 		sb.WriteString("\n")
 		if issue.Description != "" {
-			desc := issue.Description
-			if len(desc) > 200 {
-				desc = desc[:200] + "..."
-			}
+			desc := output.Truncate(issue.Description, 203)
 			sb.WriteString(fmt.Sprintf("  > %s\n", strings.ReplaceAll(desc, "\n", " ")))
 		}
 	}

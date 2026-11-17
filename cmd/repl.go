@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/chzyer/readline"
-	"github.com/fatih/color"
 
 	"gitlab-ai/internal/models"
 	"gitlab-ai/pkg/ai"
@@ -34,10 +34,16 @@ type replState struct {
 	lastAIEventID int64
 	reviews       map[string]*reviewEntry
 	reviewOrder   []string
-	stats         sessionStats
+
+	// The command currently being dispatched, so handlers can attach AI
+	// output and side effects to its audit event.
+	curEventID int64
+	curCommand string
+	curProject string
 
 	activeTeam      string
 	projectCache    []models.ProjectInfo
+	cacheGen        int // bumped on team/env switch; stale background loads are dropped
 	cacheMu         sync.RWMutex
 	cacheReady      chan struct{}
 	fullCacheMu     sync.Mutex
@@ -56,68 +62,7 @@ type reviewEntry struct {
 	reviewedAt time.Time
 }
 
-type sessionStats struct {
-	mrsReviewed  int
-	mrsCreated   int
-	filesCreated int
-	issuesViewed int
-}
-
 // ─── Auto-complete ───────────────────────────────────────────────────────────
-
-func (r *replState) buildCompleter() *readline.PrefixCompleter {
-	projectDynamic := readline.PcItemDynamic(func(line string) []string {
-		return r.projectSuggestions()
-	})
-
-	return readline.NewPrefixCompleter(
-		readline.PcItem("start"),
-		readline.PcItem("list"),
-		readline.PcItem("projects"),
-		readline.PcItem("tickets"),
-		readline.PcItem("ticket-open", projectDynamic),
-		readline.PcItem("ticket-open-empty"),
-		readline.PcItem("ship"),
-		readline.PcItem("ticket-close", projectDynamic),
-		readline.PcItem("ticket-reopen", projectDynamic),
-		readline.PcItem("ticket-update", projectDynamic),
-		readline.PcItem("ticket-search", projectDynamic),
-		readline.PcItem("create-ticket-desc", projectDynamic),
-		readline.PcItem("tickets-black"),
-		readline.PcItem("mr-status", projectDynamic),
-		readline.PcItem("mr-open", projectDynamic),
-		readline.PcItem("mr-review", projectDynamic),
-		readline.PcItem("mr-comment", projectDynamic),
-		readline.PcItem("mr-checks", projectDynamic),
-		readline.PcItem("mr-merge", projectDynamic),
-		readline.PcItem("mr-approve", projectDynamic),
-		readline.PcItem("mr-unapprove", projectDynamic),
-		readline.PcItem("mr-rebase", projectDynamic),
-		readline.PcItem("mr-update", projectDynamic),
-		readline.PcItem("mr-close", projectDynamic),
-		readline.PcItem("mr-reopen", projectDynamic),
-		readline.PcItem("pipeline", projectDynamic),
-		readline.PcItem("pipeline-view", projectDynamic),
-		readline.PcItem("pipeline-logs", projectDynamic),
-		readline.PcItem("pipeline-retry", projectDynamic),
-		readline.PcItem("pipeline-cancel", projectDynamic),
-		readline.PcItem("pipeline-triage", projectDynamic),
-		readline.PcItem("diff", projectDynamic),
-		readline.PcItem("branch-cleanup", projectDynamic),
-		readline.PcItem("create-ticket-content", projectDynamic),
-		readline.PcItem("create-epic-content", projectDynamic),
-		readline.PcItem("release"),
-		readline.PcItem("config"),
-		readline.PcItem("switch-team"),
-		readline.PcItem("stats",
-			readline.PcItem("week"),
-			readline.PcItem("month"),
-			readline.PcItem("dashboard"),
-		),
-		readline.PcItem("help"),
-		readline.PcItem("exit"),
-	)
-}
 
 func (r *replState) projectSuggestions() []string {
 	r.cacheMu.RLock()
@@ -146,11 +91,12 @@ func (r *replState) projectSuggestions() []string {
 // waitCacheReady blocks until the startup fetch finishes, showing a loader
 // only if the cache isn't ready yet.
 func (r *replState) waitCacheReady(timeout time.Duration) {
-	if r.cacheReady == nil {
+	ready := r.readyChan()
+	if ready == nil {
 		return
 	}
 	select {
-	case <-r.cacheReady:
+	case <-ready:
 		return
 	default:
 	}
@@ -158,9 +104,17 @@ func (r *replState) waitCacheReady(timeout time.Duration) {
 	s.Start()
 	defer s.Stop()
 	select {
-	case <-r.cacheReady:
+	case <-ready:
 	case <-time.After(timeout):
 	}
+}
+
+// readyChan returns the channel closed when the current startup fetch is done.
+// startCacheLoad replaces it on team/env switch, so it is read under cacheMu.
+func (r *replState) readyChan() chan struct{} {
+	r.cacheMu.RLock()
+	defer r.cacheMu.RUnlock()
+	return r.cacheReady
 }
 
 func (r *replState) waitForCache() []models.ProjectInfo {
@@ -174,10 +128,11 @@ func (r *replState) waitForCache() []models.ProjectInfo {
 
 const startupProjectLimit = 10
 
-func (r *replState) fetchProjectCache() {
-	if r.cacheReady != nil {
-		defer close(r.cacheReady)
-	}
+// fetchProjectCache loads the first projects and closes ready. The channel is
+// passed in rather than read from r: after a switch, r.cacheReady is a new
+// channel that belongs to the new load and must not be closed by this one.
+func (r *replState) fetchProjectCache(ready chan struct{}) {
+	defer close(ready)
 	r.refreshCacheWithLimit(startupProjectLimit)
 }
 
@@ -186,23 +141,35 @@ func (r *replState) refreshCache() {
 }
 
 func (r *replState) refreshCacheWithLimit(limit int) {
+	r.cacheMu.RLock()
+	prov, gen, since := r.provider, r.cacheGen, r.lastRefreshTime
+	r.cacheMu.RUnlock()
+	if prov == nil {
+		return
+	}
+
 	var projects []models.ProjectInfo
 	var err error
 
-	if r.lastRefreshTime.IsZero() {
+	if since.IsZero() {
 		if limit > 0 {
-			projects, err = r.provider.Repos().ListRecentProjects(limit)
+			projects, err = prov.Repos().ListRecentProjects(limit)
 		} else {
-			projects, err = r.provider.Repos().ListProjects()
+			projects, err = prov.Repos().ListProjects()
 		}
 	} else {
-		projects, err = r.provider.Repos().ListProjectsSince(r.lastRefreshTime, 1)
+		projects, err = prov.Repos().ListProjectsSince(since, 1)
 	}
 	if err != nil {
 		return
 	}
 
 	r.cacheMu.Lock()
+	if gen != r.cacheGen {
+		// Team or environment switched while we were fetching.
+		r.cacheMu.Unlock()
+		return
+	}
 	if r.lastRefreshTime.IsZero() {
 		r.projectCache = r.filterByTeam(projects)
 	} else {
@@ -212,9 +179,8 @@ func (r *replState) refreshCacheWithLimit(limit int) {
 	sort.Slice(r.projectCache, func(i, j int) bool {
 		return r.projectCache[i].LastActivity.After(r.projectCache[j].LastActivity)
 	})
-	r.cacheMu.Unlock()
-
 	r.lastRefreshTime = time.Now()
+	r.cacheMu.Unlock()
 }
 
 func (r *replState) filterByTeam(projects []models.ProjectInfo) []models.ProjectInfo {
@@ -259,9 +225,9 @@ func (r *replState) loadFullCache() {
 	r.fullCacheMu.Lock()
 	defer r.fullCacheMu.Unlock()
 
-	if r.cacheReady != nil {
+	if ready := r.readyChan(); ready != nil {
 		select {
-		case <-r.cacheReady:
+		case <-ready:
 		case <-time.After(30 * time.Second):
 		}
 	}
@@ -271,7 +237,9 @@ func (r *replState) loadFullCache() {
 	r.cacheMu.RUnlock()
 
 	if count <= startupProjectLimit {
+		r.cacheMu.Lock()
 		r.lastRefreshTime = time.Time{}
+		r.cacheMu.Unlock()
 		r.refreshCacheWithLimit(0)
 	}
 }
@@ -361,13 +329,22 @@ func (r *replState) resetIdle() {
 
 // ─── REPL Entry Point ───────────────────────────────────────────────────────
 // REPL: Read-Eval-Print-Loop
-func RunREPL(cfg *config.AppConfig) {
-	r := &replState{
+// newSession opens the audit trail and the line editor shared by the
+// interactive REPL and one-shot mode. close releases both.
+func newSession(cfg *config.AppConfig) (r *replState, close func(), err error) {
+	r = &replState{
 		cfg:     cfg,
 		reviews: make(map[string]*reviewEntry),
 	}
 
-	auditor, auditErr := audit.Open(".git-agent/audit")
+	if err := os.MkdirAll(config.Dir(), 0o700); err != nil {
+		output.PrintWarning(fmt.Sprintf("Cannot create %s: %v", config.Dir(), err))
+	}
+	auditDir, notice := config.AuditDir()
+	if notice != "" {
+		output.PrintSuccess(notice)
+	}
+	auditor, auditErr := audit.Open(auditDir)
 	if auditErr != nil {
 		fmt.Fprintf(os.Stderr, "⚠ audit trail disabled: %v\n", auditErr)
 	} else {
@@ -377,95 +354,70 @@ func RunREPL(cfg *config.AppConfig) {
 	completer := r.buildCompleter()
 
 	rl, err := readline.NewEx(&readline.Config{
-		Prompt:            "git-agent> ",
+		Prompt:            r.prompt(),
 		AutoComplete:      completer,
 		InterruptPrompt:   "^C",
 		EOFPrompt:         "exit",
-		HistoryFile:       "/tmp/git-agent-history.tmp",
+		HistoryFile:       config.HistoryFile(),
 		HistoryLimit:      500,
 		HistorySearchFold: true,
 	})
 	if err != nil {
+		if r.auditor != nil {
+			r.auditor.Close()
+		}
+		return nil, nil, err
+	}
+	r.rl = rl
+	output.SetBrowserOpen(cfg.CLI.OpenInBrowser)
+
+	return r, func() {
+		rl.Close()
+		if r.auditor != nil {
+			r.auditor.Close()
+		}
+	}, nil
+}
+
+// RunOnce runs a single command non-interactively (git-agent mr-status x)
+// and returns the process exit code: 1 if the command reported an error.
+func RunOnce(cfg *config.AppConfig, args []string) int {
+	r, _, err := newSession(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to initialize: %v\n", err)
+		return 1
+	}
+	// ponytail: readline.Close races with readline's own terminal goroutine
+	// when no line was ever read (chzyer/readline v1.5.1), and the process
+	// exits right after, so only the audit DB is closed.
+	defer func() {
+		if r.auditor != nil {
+			r.auditor.Close()
+		}
+	}()
+
+	before := output.ErrorCount()
+	r.dispatch(strings.Join(args, " "))
+	if output.ErrorCount() > before {
+		return 1
+	}
+	return 0
+}
+
+func RunREPL(cfg *config.AppConfig) {
+	r, closeSession, err := newSession(cfg)
+	if err != nil {
 		fmt.Printf("Failed to initialize: %v\n", err)
 		return
 	}
-	defer rl.Close()
-	r.rl = rl
+	defer closeSession()
+	rl := r.rl
 
-	output.SetBrowserOpen(cfg.CLI.OpenInBrowser)
-
-	theme := output.GetTheme()
-	bold := color.New(color.Bold)
-
-	fmt.Println()
-	theme.Header.Println("  git-agent — Interactive Mode")
-	fmt.Println()
-	bold.Println("Merge Requests:")
-	fmt.Println("  mr-status  <project>                   - List open MRs")
-	fmt.Println("  mr-review  <project> [mr-number]       - Review MR with AI")
-	fmt.Println("  mr-comment <project> [mr-number]       - Post review as MR comment")
-	fmt.Println("  mr-open    <project> [branch] [target] - Create a new MR")
-	fmt.Println("  mr-merge   <project> <mr-number>       - Merge an MR")
-	fmt.Println("  mr-approve <project> <mr-number>       - Approve an MR")
-	fmt.Println("  mr-rebase  <project> <mr-number>       - Rebase MR source branch")
-	fmt.Println("  mr-update  <project> <mr-number>       - Update MR metadata")
-	fmt.Println("  mr-close   <project> <mr-number>       - Close an MR")
-	fmt.Println("  mr-reopen  <project> <mr-number>       - Reopen a closed MR")
-	fmt.Println("  mr-checks  <project> <mr-number>       - Show pipeline status for MR")
-	fmt.Println()
-	bold.Println("Pipelines / CI:")
-	fmt.Println("  pipeline        <project>              - List recent pipelines")
-	fmt.Println("  pipeline-view   <project> <id>         - View pipeline details & jobs")
-	fmt.Println("  pipeline-logs   <project> <job-id>     - Show job log output")
-	fmt.Println("  pipeline-retry  <project> <id>         - Retry a failed pipeline")
-	fmt.Println("  pipeline-cancel <project> <id>         - Cancel a running pipeline")
-	fmt.Println("  pipeline-triage <project> [id]         - AI triage of failed pipeline")
-	fmt.Println()
-	bold.Println("Tickets / Issues:")
-	fmt.Println("  ticket-open    [project]               - Create a new ticket")
-	fmt.Println("  ticket-open-empty                      - Quick-create empty ticket (assigned to you)")
-	fmt.Println("  ticket-close   <project> <number>      - Close a ticket")
-	fmt.Println("  ticket-reopen  <project> <number>      - Reopen a ticket")
-	fmt.Println("  ticket-update  <project> <number>      - Update ticket metadata")
-	fmt.Println("  ticket-search  <project>               - Search tickets")
-	fmt.Println("  tickets                                - Generate tickets report")
-	fmt.Println("  tickets-black                          - Generate malformed tickets report")
-	fmt.Println()
-	bold.Println("Repository:")
-	fmt.Println("  list / projects                        - List team projects")
-	fmt.Println("  diff           <project>               - Compare tags or branches")
-	fmt.Println("  branch-cleanup <project>               - Remove stale/merged branches")
-	fmt.Println("  release                                - Check release status of all projects")
-	fmt.Println()
-	bold.Println("Content Generation:")
-	fmt.Println("  create-ticket-content [project]        - Generate ticket from committed branch diff")
-	fmt.Println("  create-ticket-desc    [project]        - Generate description from linked MRs")
-	fmt.Println("  create-epic-content   [project]        - Generate epic from committed branch diff")
-	fmt.Println()
-	fmt.Println()
-	bold.Println("Workflow:")
-	fmt.Println("  ship                                   - Full flow: ticket → multi-select folders → commit → MR → update ticket")
-	fmt.Println()
-	bold.Println("Session:")
-	fmt.Println("  start                                  - Start session (auto-runs on first command)")
-	fmt.Println("  switch-team                            - Switch active team")
-	fmt.Println("  config                                 - Show current configuration")
-	fmt.Println()
-	bold.Println("Stats:")
-	fmt.Println("  stats [week|month] [YYYY-MM]           - Activity summary")
-	fmt.Println("  stats dashboard                        - Open web dashboard")
-	fmt.Println()
-	theme.Muted.Println("  exit  - End session")
-	theme.Muted.Println("  Any other input is sent to AI as a question.")
-	fmt.Println()
 	idleTimeout := time.Duration(cfg.CLI.IdleTimeoutMinutes) * time.Minute
 	if idleTimeout <= 0 {
 		idleTimeout = 1 * time.Hour
 	}
-
-	theme.Warning.Printf("  Auto-exit after %s of inactivity.\n", idleTimeout)
-	theme.Muted.Println("  Shortcuts: Tab = auto-complete | ↑/↓ = history | Ctrl+R = search history")
-	fmt.Println()
+	printBanner(idleTimeout)
 
 	r.idleTimer = time.AfterFunc(idleTimeout, func() {
 		r.timedOut.Store(true)
@@ -510,28 +462,13 @@ func RunREPL(cfg *config.AppConfig) {
 
 // ─── Command Dispatch ────────────────────────────────────────────────────────
 
-var significantCommands = map[string]string{
-	"mr-review":             audit.CategoryAIGeneration,
-	"mr-comment":            audit.CategoryGitLabMutation,
-	"mr-open":               audit.CategoryGitLabMutation,
-	"mr-merge":              audit.CategoryGitLabMutation,
-	"mr-approve":            audit.CategoryGitLabMutation,
-	"mr-unapprove":          audit.CategoryGitLabMutation,
-	"mr-close":              audit.CategoryGitLabMutation,
-	"mr-reopen":             audit.CategoryGitLabMutation,
-	"mr-rebase":             audit.CategoryGitLabMutation,
-	"mr-update":             audit.CategoryGitLabMutation,
-	"ticket-open":           audit.CategoryGitLabMutation,
-	"ticket-open-empty":     audit.CategoryGitLabMutation,
-	"ticket-close":          audit.CategoryGitLabMutation,
-	"ticket-reopen":         audit.CategoryGitLabMutation,
-	"ticket-update":         audit.CategoryGitLabMutation,
-	"create-ticket-content": audit.CategoryAIGeneration,
-	"create-ticket-desc":    audit.CategoryAIGeneration,
-	"create-epic-content":   audit.CategoryAIGeneration,
-	"pipeline-triage":       audit.CategoryAIGeneration,
-	"ship":                  audit.CategoryAIGeneration,
-	"branch-cleanup":        audit.CategoryGitLabMutation,
+func printBanner(idleTimeout time.Duration) {
+	theme := output.GetTheme()
+	fmt.Println()
+	theme.Header.Println("  git-agent — Interactive Mode")
+	theme.Muted.Println("  Type 'help' for commands, or ask anything in plain English.")
+	theme.Muted.Printf("  Tab completes · ↑/↓ history · Ctrl+R search · auto-exit after %s idle\n", idleTimeout)
+	fmt.Println()
 }
 
 func (r *replState) dispatch(line string) bool {
@@ -540,105 +477,48 @@ func (r *replState) dispatch(line string) bool {
 		return false
 	}
 
-	cmd := strings.ToLower(parts[0])
+	name := strings.ToLower(parts[0])
+	if name == "exit" {
+		r.handleExit()
+		return true
+	}
+
 	start := time.Now()
 	output.TakeWorkTime()
 
-	switch cmd {
-	case "start":
-		r.handleStart()
-	case "list":
-		r.handleList()
-	case "projects":
-		r.handleList()
-	case "mr-review":
-		r.handleMRReview(parts[1:])
-	case "mr-comment":
-		r.handleMRComment(parts[1:])
-	case "mr-status":
-		r.handleMRStatus(parts[1:])
-	case "mr-checks":
-		r.handleMRChecks(parts[1:])
-	case "mr-open":
-		r.handleMROpen(parts[1:])
-	case "mr-merge":
-		r.handleMRMerge(parts[1:])
-	case "mr-approve":
-		r.handleMRApprove(parts[1:])
-	case "mr-unapprove":
-		r.handleMRUnapprove(parts[1:])
-	case "mr-rebase":
-		r.handleMRRebase(parts[1:])
-	case "mr-update":
-		r.handleMRUpdate(parts[1:])
-	case "mr-close":
-		r.handleMRClose(parts[1:])
-	case "mr-reopen":
-		r.handleMRReopen(parts[1:])
-	case "pipeline":
-		r.handlePipeline(parts[1:])
-	case "pipeline-view":
-		r.handlePipelineView(parts[1:])
-	case "pipeline-logs":
-		r.handlePipelineLogs(parts[1:])
-	case "pipeline-retry":
-		r.handlePipelineRetry(parts[1:])
-	case "pipeline-cancel":
-		r.handlePipelineCancel(parts[1:])
-	case "pipeline-triage":
-		r.handlePipelineTriage(parts[1:])
-	case "diff":
-		r.handleDiff(parts[1:])
-	case "branch-cleanup":
-		r.handleBranchCleanup(parts[1:])
-	case "tickets":
-		r.handleTickets(parts[1:])
-	case "ticket-open":
-		r.handleTicketOpen(parts[1:])
-	case "ticket-open-empty":
-		r.handleTicketOpenEmpty(parts[1:])
-	case "ship":
-		r.handleShip(parts[1:])
-	case "ticket-close":
-		r.handleTicketClose(parts[1:])
-	case "ticket-reopen":
-		r.handleTicketReopen(parts[1:])
-	case "ticket-update":
-		r.handleTicketUpdate(parts[1:])
-	case "ticket-search":
-		r.handleTicketSearch(parts[1:])
-	case "create-ticket-desc":
-		r.handleTicketDescribe(parts[1:])
-	case "tickets-black":
-		r.handleTicketsBlack(parts[1:])
-	case "create-ticket-content":
-		r.handleCreateTicketContent(parts[1:])
-	case "create-epic-content":
-		r.handleCreateEpicContent(parts[1:])
-	case "release":
-		r.handleRelease()
-	case "config":
-		r.handleConfig()
-	case "switch-team":
-		r.handleSwitchTeam()
-	case "stats":
-		r.handleStats(parts[1:])
-	case "help":
-		r.showHelp()
-	case "exit":
-		r.handleExit()
-		return true
+	c := lookupCommand(name)
+	var eventID int64
+	if c != nil {
+		project := auditProject(parts[1:])
+		if r.auditor != nil && c.category != "" {
+			eventID, _ = r.auditor.Record(audit.Event{
+				Command: c.name, Category: c.category, Project: project, Success: true,
+			})
+		}
+		// Nested dispatch (intent routing) must not clobber the outer command.
+		prevID, prevCmd, prevProject := r.curEventID, r.curCommand, r.curProject
+		r.curEventID, r.curCommand, r.curProject = eventID, c.name, project
+		defer func() { r.curEventID, r.curCommand, r.curProject = prevID, prevCmd, prevProject }()
+	}
+	errorsBefore := output.ErrorCount()
 
-	case "mr":
-		output.PrintWarning("Command renamed → use 'mr-review' instead.")
-	case "add":
-		output.PrintWarning("Command renamed → use 'mr-comment' instead.")
-	case "index":
-		output.PrintWarning("Command removed. Context is managed automatically during reviews.")
-	case "raise-mr":
-		output.PrintWarning("Command renamed → use 'mr-open' instead.")
-
+	switch {
+	case c != nil:
+		c.run(r, parts[1:])
+	case renamedCommands[name] != "":
+		output.PrintWarning(renamedCommands[name])
 	default:
+		if s := suggestCommand(name); s != "" {
+			fixed := strings.Join(append([]string{s}, parts[1:]...), " ")
+			switch r.promptForChoice(fmt.Sprintf("Unknown command '%s'. Did you mean '%s'?", name, s),
+				[]string{"Run: " + fixed, "Ask AI instead"}) {
+			case 0:
+				return r.dispatch(fixed)
+			case 1:
+				r.handleIntentOrChat(line)
+			}
+			break
+		}
 		r.handleIntentOrChat(line)
 	}
 
@@ -647,23 +527,49 @@ func (r *replState) dispatch(line string) bool {
 		output.PrintWorked(d)
 	}
 
-	if r.auditor != nil {
-		if category, ok := significantCommands[cmd]; ok {
-			project := ""
-			if len(parts) > 1 {
-				project = parts[1]
-			}
-			r.auditor.Record(audit.Event{
-				Command:    cmd,
-				Category:   category,
-				Project:    project,
-				DurationMs: time.Since(start).Milliseconds(),
-				Success:    true,
-			})
-		}
+	if eventID > 0 {
+		r.auditor.Finish(eventID, time.Since(start).Milliseconds(), output.ErrorCount() == errorsBefore)
 	}
 
 	return false
+}
+
+// auditProject picks the project a command acted on from its raw arguments:
+// the -p flag, else the first non-numeric argument.
+func auditProject(args []string) string {
+	if p, rest := parseProjectFlag(args); p != "" {
+		return p
+	} else if len(rest) > 0 {
+		if _, err := strconv.Atoi(rest[0]); err != nil {
+			return rest[0]
+		}
+	}
+	return ""
+}
+
+// recordEffect logs a side effect (file written, MR or ticket created) under
+// the command that is currently running.
+func (r *replState) recordEffect(category string) {
+	if r.auditor == nil {
+		return
+	}
+	r.auditor.Record(audit.Event{
+		Command: r.curCommand, Category: category, Project: r.curProject, Success: true,
+	})
+}
+
+// prompt shows the active environment and team: "git-agent[work/cnips]> ".
+func (r *replState) prompt() string {
+	var ctx []string
+	for _, s := range []string{r.cfg.Environment, r.activeTeam} {
+		if s != "" {
+			ctx = append(ctx, s)
+		}
+	}
+	if len(ctx) == 0 {
+		return "git-agent> "
+	}
+	return "git-agent[" + strings.Join(ctx, "/") + "]> "
 }
 
 // ─── Session ─────────────────────────────────────────────────────────────────
@@ -674,7 +580,11 @@ func (r *replState) ensureSession() bool {
 	}
 
 	output.PrintWarning("No active session — auto-starting...")
+	return r.connect()
+}
 
+// connect authenticates against the configured platform and starts a session.
+func (r *replState) connect() bool {
 	platformName := r.cfg.Platform
 	if platformName == "" {
 		platformName = "gitlab"
@@ -691,13 +601,18 @@ func (r *replState) ensureSession() bool {
 		return false
 	}
 
+	r.cacheMu.Lock()
 	r.provider = prov
+	r.cacheMu.Unlock()
 	r.username = prov.Username()
 	r.startedAt = time.Now()
 
 	fmt.Println()
 	output.PrintSuccess(fmt.Sprintf("Authenticated as %s (@%s)", prov.UserDisplayName(), prov.Username()))
 	output.PrintSuccess(fmt.Sprintf("Platform: %s", prov.Name()))
+	if r.cfg.Environment != "" {
+		output.PrintSuccess(fmt.Sprintf("Environment: %s", r.cfg.Environment))
+	}
 	output.PrintURL(r.cfg.GitLab.BaseURL)
 
 	if len(r.cfg.Teams) == 1 {
@@ -712,6 +627,9 @@ func (r *replState) ensureSession() bool {
 	}
 
 	r.startCacheLoad()
+	if r.rl != nil {
+		r.rl.SetPrompt(r.prompt())
+	}
 
 	output.PrintSuccess("Session started — ready for commands")
 	fmt.Println()
@@ -730,30 +648,37 @@ func (r *replState) handleStart() {
 // startCacheLoad fetches projects in the background; commands that need them
 // wait with a loader (waitForCache / ensureFullCache).
 func (r *replState) startCacheLoad() {
-	r.cacheReady = make(chan struct{})
+	ready := make(chan struct{})
+	r.cacheMu.Lock()
+	r.cacheReady = ready
+	r.cacheMu.Unlock()
 	go func() {
-		r.fetchProjectCache()
+		r.fetchProjectCache(ready)
 		r.loadFullCache()
 	}()
 }
 
 func (r *replState) handleExit() {
-	if r.auditor != nil {
-		r.auditor.Close()
-	}
-
 	fmt.Println()
 	if r.provider != nil && !r.startedAt.IsZero() {
-		duration := time.Since(r.startedAt).Round(time.Second)
+		lines := []string{
+			fmt.Sprintf("Duration:        %s", time.Since(r.startedAt).Round(time.Second)),
+			fmt.Sprintf("Team:            %s", r.activeTeam),
+		}
+		// Same source as `stats`, so the two can never disagree.
+		if r.auditor != nil {
+			if s, err := r.auditor.SummarySince(r.startedAt); err == nil {
+				lines = append(lines,
+					fmt.Sprintf("Commands run:    %d (%d failed)", s.TotalEvents, s.Failed),
+					fmt.Sprintf("MRs reviewed:    %d", s.MRsReviewed),
+					fmt.Sprintf("MRs created:     %d", s.MRsCreated),
+					fmt.Sprintf("Tickets created: %d", s.TicketsCreated),
+					fmt.Sprintf("Files written:   %d", s.FilesWritten),
+				)
+			}
+		}
 		output.ThemeHeader("Session Summary")
-		output.ThemeBox([]string{
-			fmt.Sprintf("Duration:      %s", duration),
-			fmt.Sprintf("Team:          %s", r.activeTeam),
-			fmt.Sprintf("MRs reviewed:  %d", r.stats.mrsReviewed),
-			fmt.Sprintf("MRs created:   %d", r.stats.mrsCreated),
-			fmt.Sprintf("Files created: %d", r.stats.filesCreated),
-			fmt.Sprintf("Issues viewed: %d", r.stats.issuesViewed),
-		})
+		output.ThemeBox(lines)
 	}
 	fmt.Println()
 	output.GetTheme().Muted.Println("  Goodbye.")
@@ -771,11 +696,13 @@ func (r *replState) auditAI(eventID int64, result ai.ChatResult) {
 		return
 	}
 	r.auditor.RecordAIOutput(audit.AIOutput{
-		EventID:    eventID,
-		Provider:   r.aiClient.ProviderName(),
-		Model:      result.Model,
-		CharCount:  len(result.Text),
-		DurationMs: result.DurationMs,
+		EventID:      eventID,
+		Provider:     r.aiClient.ProviderName(),
+		Model:        result.Model,
+		CharCount:    len(result.Text),
+		DurationMs:   result.DurationMs,
+		InputTokens:  result.InputTokens,
+		OutputTokens: result.OutputTokens,
 	})
 }
 

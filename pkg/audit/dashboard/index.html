@@ -4,240 +4,233 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>git-agent — Activity Dashboard</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<!-- Self-contained on purpose: no CDN, so it works offline and on locked-down networks. -->
 <style>
   :root {
+    color-scheme: dark;
     --bg: #0d1117; --surface: #161b22; --border: #30363d;
-    --text: #e6edf3; --muted: #8b949e;
+    --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
     --green-0: #161b22; --green-1: #0e4429; --green-2: #006d32;
     --green-3: #26a641; --green-4: #39d353;
-    --accent: #58a6ff;
+    --amber: #d29922; --red: #f85149;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; padding: 24px; }
-  h1 { font-size: 24px; margin-bottom: 8px; }
-  h2 { font-size: 18px; margin-bottom: 12px; color: var(--muted); }
-  .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px 24px; margin-bottom: 20px; }
+  h1 { font-size: 24px; }
+  h2 { font-size: 15px; margin-bottom: 12px; color: var(--muted); font-weight: 600; }
+  .subtitle { color: var(--muted); font-size: 14px; }
+  .range { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  select { background: var(--surface); color: var(--text); border: 1px solid var(--border); padding: 6px 10px; border-radius: 6px; font-size: 14px; }
+  #error { display: none; background: #3d1418; border: 1px solid var(--red); color: var(--text); padding: 10px 14px; border-radius: 6px; margin-bottom: 16px; font-size: 14px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px; min-width: 0; }
   .card-full { grid-column: 1 / -1; }
-  .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
   .stat { text-align: center; }
-  .stat-value { font-size: 32px; font-weight: 700; color: var(--accent); }
+  .stat-value { font-size: 30px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .stat-value.bad { color: var(--red); }
   .stat-label { font-size: 12px; color: var(--muted); margin-top: 4px; }
-  .heatmap { display: flex; gap: 3px; flex-wrap: wrap; justify-content: flex-start; }
+  .heatmap { display: flex; gap: 3px; overflow-x: auto; padding-bottom: 4px; }
   .heatmap-week { display: flex; flex-direction: column; gap: 3px; }
-  .heatmap-cell {
-    width: 12px; height: 12px; border-radius: 2px; background: var(--green-0);
-    position: relative; cursor: pointer;
-  }
-  .heatmap-cell:hover::after {
-    content: attr(data-tooltip); position: absolute; bottom: 18px; left: 50%;
-    transform: translateX(-50%); background: #1f2937; color: var(--text);
-    padding: 4px 8px; border-radius: 4px; font-size: 11px; white-space: nowrap; z-index: 10;
-  }
-  .heatmap-cell.l1 { background: var(--green-1); }
-  .heatmap-cell.l2 { background: var(--green-2); }
-  .heatmap-cell.l3 { background: var(--green-3); }
-  .heatmap-cell.l4 { background: var(--green-4); }
-  .chart-container { position: relative; height: 250px; }
-  .quality-bar { display: flex; height: 32px; border-radius: 4px; overflow: hidden; margin: 8px 0; }
-  .quality-bar div { display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; }
-  .q-accepted { background: var(--green-3); }
-  .q-edited { background: #d29922; }
-  .q-discarded { background: #f85149; }
-  .legend { display: flex; gap: 16px; margin-top: 8px; font-size: 13px; }
+  .heatmap-cell { width: 12px; height: 12px; border-radius: 2px; background: var(--green-0); outline: 1px solid #ffffff0d; }
+  .heatmap-cell.l1 { background: var(--green-1); } .heatmap-cell.l2 { background: var(--green-2); }
+  .heatmap-cell.l3 { background: var(--green-3); } .heatmap-cell.l4 { background: var(--green-4); }
+  .bars { display: flex; flex-direction: column; gap: 8px; }
+  .bar-row { display: grid; grid-template-columns: minmax(0, 40%) 1fr auto; gap: 10px; align-items: center; font-size: 13px; }
+  .bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-track { height: 10px; background: var(--bg); border-radius: 5px; overflow: hidden; display: flex; }
+  .bar-fill { height: 100%; background: var(--accent); }
+  .bar-fill.fail { background: var(--red); }
+  .bar-value { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .quality-bar { display: flex; height: 28px; border-radius: 4px; overflow: hidden; margin: 8px 0; }
+  .quality-bar div { display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #0d1117; }
+  .q-accepted { background: var(--green-3); } .q-edited { background: var(--amber); } .q-discarded { background: var(--red); }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 8px; font-size: 13px; }
   .legend span::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
-  .legend .la::before { background: var(--green-3); }
-  .legend .le::before { background: #d29922; }
-  .legend .ld::before { background: #f85149; }
-  #range-select { background: var(--surface); color: var(--text); border: 1px solid var(--border); padding: 6px 12px; border-radius: 6px; font-size: 14px; margin-bottom: 16px; }
+  .legend .la::before { background: var(--green-3); } .legend .le::before { background: var(--amber); } .legend .ld::before { background: var(--red); }
+  .table-wrap { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th { text-align: left; color: var(--muted); font-weight: 600; padding: 8px 12px; border-bottom: 1px solid var(--border); }
-  td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
-  .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; }
-  .badge-fast { background: var(--green-2); color: var(--green-4); }
-  .date-group { color: var(--accent); font-weight: 600; padding-top: 8px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; padding: 8px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; background: var(--green-2); color: var(--green-4); margin-left: 6px; }
+  .empty { color: var(--muted); font-size: 14px; }
+  @media (max-width: 720px) {
+    body { padding: 16px; }
+    .grid { grid-template-columns: 1fr; }
+    .stat-grid { grid-template-columns: repeat(2, 1fr); }
+    .range { margin-left: 0; }
+  }
 </style>
 </head>
 <body>
-<h1>git-agent</h1>
-<p class="subtitle">Activity Dashboard</p>
-<select id="range-select">
-  <option value="month">Last 30 days</option>
-  <option value="week">Last 7 days</option>
-</select>
+<header>
+  <h1>git-agent</h1>
+  <p class="subtitle">Activity Dashboard</p>
+  <label class="range">Range
+    <select id="range-select">
+      <option value="today">Today</option>
+      <option value="week">Last 7 days</option>
+      <option value="month" selected>Last 30 days</option>
+      <option value="year">This year</option>
+    </select>
+  </label>
+</header>
+<div id="error" role="alert"></div>
 <div class="grid">
-  <div class="card card-full">
-    <h2>Activity Heatmap</h2>
-    <div id="heatmap" class="heatmap"></div>
-  </div>
-  <div class="card card-full">
-    <h2>Summary</h2>
-    <div id="stats" class="stat-grid"></div>
-  </div>
-  <div class="card">
-    <h2>Model Usage</h2>
-    <div class="chart-container"><canvas id="modelChart"></canvas></div>
-  </div>
-  <div class="card">
-    <h2>AI Output Quality</h2>
-    <div id="quality"></div>
-  </div>
-  <div class="card card-full">
-    <h2>Model Performance</h2>
-    <div id="model-perf"></div>
-  </div>
-  <div class="card card-full">
-    <h2>Model Usage by Date</h2>
-    <div id="model-by-date"></div>
-  </div>
+  <div class="card card-full"><h2>Activity this year</h2><div id="heatmap" class="heatmap"></div></div>
+  <div class="card card-full"><h2>Summary</h2><div id="stats" class="stat-grid"></div></div>
+  <div class="card"><h2>Commands</h2><div id="commands" class="bars"></div></div>
+  <div class="card"><h2>Projects</h2><div id="projects" class="bars"></div></div>
+  <div class="card"><h2>Model usage</h2><div id="models" class="bars"></div></div>
+  <div class="card"><h2>AI output quality</h2><div id="quality"></div></div>
+  <div class="card card-full"><h2>Model performance</h2><div id="model-perf" class="table-wrap"></div></div>
 </div>
 <script>
-const API = '';
-let modelChart = null;
+// Everything shown comes from the local audit DB, but command, project and
+// model names are still escaped before they reach innerHTML.
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+function empty(msg) { return '<p class="empty">' + esc(msg) + '</p>'; }
 
 async function fetchJSON(url) {
   const r = await fetch(url);
+  if (!r.ok) throw new Error(url + ' → ' + r.status + ' ' + (await r.text()).trim());
   return r.json();
 }
 
-function utcToday() {
-  const n = new Date();
-  return new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate()));
-}
 function pad(n) { return n < 10 ? '0' + n : '' + n; }
-function utcKey(d) { return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()); }
+function dayKey(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
 
 async function loadHeatmap() {
-  const today = utcToday();
-  const year = today.getUTCFullYear();
-  const data = await fetchJSON(API + '/api/heatmap?year=' + year);
-  const map = {};
-  (data || []).forEach(d => map[d.Date] = d.Count);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const data = await fetchJSON('/api/heatmap?year=' + today.getFullYear());
+  const counts = {};
+  (data || []).forEach(function (d) { counts[d.Date] = d.Count; });
   const el = document.getElementById('heatmap');
   el.innerHTML = '';
-  const start = new Date(Date.UTC(year, 0, 1));
-  const startDay = start.getUTCDay();
+  const d = new Date(today.getFullYear(), 0, 1);
   let week = document.createElement('div');
   week.className = 'heatmap-week';
-  for (let i = 0; i < startDay; i++) {
-    const cell = document.createElement('div');
-    cell.className = 'heatmap-cell';
-    cell.style.visibility = 'hidden';
-    week.appendChild(cell);
+  for (let i = 0; i < d.getDay(); i++) {
+    const pad = document.createElement('div');
+    pad.className = 'heatmap-cell';
+    pad.style.visibility = 'hidden';
+    week.appendChild(pad);
   }
-  const d = new Date(start);
   while (d <= today) {
-    if (d.getUTCDay() === 0 && week.children.length > 0) {
+    if (d.getDay() === 0 && week.children.length > 0) {
       el.appendChild(week);
       week = document.createElement('div');
       week.className = 'heatmap-week';
     }
-    const key = utcKey(d);
-    const count = map[key] || 0;
+    const key = dayKey(d), count = counts[key] || 0;
     const cell = document.createElement('div');
-    const level = count === 0 ? '' : count <= 2 ? 'l1' : count <= 5 ? 'l2' : count <= 10 ? 'l3' : 'l4';
-    cell.className = 'heatmap-cell ' + level;
-    cell.setAttribute('data-tooltip', key + ': ' + count + ' actions');
+    cell.className = 'heatmap-cell ' + (count === 0 ? '' : count <= 2 ? 'l1' : count <= 5 ? 'l2' : count <= 10 ? 'l3' : 'l4');
+    cell.title = key + ': ' + count + ' commands';
     week.appendChild(cell);
-    d.setUTCDate(d.getUTCDate() + 1);
+    d.setDate(d.getDate() + 1);
   }
   if (week.children.length > 0) el.appendChild(week);
+  el.scrollLeft = el.scrollWidth; // narrow screens: show the most recent weeks
 }
 
 async function loadStats(range) {
-  const data = await fetchJSON(API + '/api/summary?range=' + range);
-  const el = document.getElementById('stats');
+  const s = await fetchJSON('/api/summary?range=' + range);
+  const success = s.total_events ? Math.round((s.total_events - s.failed) / s.total_events * 100) + '%' : '—';
   const stats = [
-    ['Commands', data.total_events],
-    ['AI Calls', data.ai_generations],
-    ['MRs Created', data.mrs_created],
-    ['MRs Reviewed', data.mrs_reviewed],
-    ['Tickets', data.tickets_created],
-    ['Files', data.files_written],
+    ['Commands', s.total_events], ['Failed', s.failed, s.failed > 0], ['Success rate', success],
+    ['AI calls', s.ai_generations], ['MRs created', s.mrs_created], ['MRs reviewed', s.mrs_reviewed],
+    ['Reviews posted', s.reviews_posted], ['Tickets created', s.tickets_created],
   ];
-  el.innerHTML = stats.map(function(s) {
-    return '<div class="stat"><div class="stat-value">' + s[1] + '</div><div class="stat-label">' + s[0] + '</div></div>';
+  document.getElementById('stats').innerHTML = stats.map(function (x) {
+    return '<div class="stat"><div class="stat-value' + (x[2] ? ' bad' : '') + '">' + esc(x[1]) +
+      '</div><div class="stat-label">' + esc(x[0]) + '</div></div>';
   }).join('');
 }
 
+// bars renders rows of {label, value, failed?} as horizontal bars.
+function bars(id, rows, emptyMsg) {
+  const el = document.getElementById(id);
+  if (!rows || rows.length === 0) { el.innerHTML = empty(emptyMsg); return; }
+  const peak = Math.max.apply(null, rows.map(function (r) { return r.value; }));
+  el.innerHTML = rows.map(function (r) {
+    const ok = r.value - (r.failed || 0);
+    const value = r.failed ? r.value + ' (' + r.failed + ' failed)' : r.value;
+    return '<div class="bar-row"><span class="bar-label" title="' + esc(r.label) + '">' + esc(r.label) + '</span>' +
+      '<span class="bar-track"><span class="bar-fill" style="width:' + (ok / peak * 100) + '%"></span>' +
+      (r.failed ? '<span class="bar-fill fail" style="width:' + (r.failed / peak * 100) + '%"></span>' : '') +
+      '</span><span class="bar-value">' + esc(value) + '</span></div>';
+  }).join('');
+}
+
+async function loadCommands(range) {
+  const data = await fetchJSON('/api/commands?range=' + range);
+  bars('commands', (data || []).slice(0, 10).map(function (c) {
+    return { label: c.Command, value: c.Count, failed: c.Failed };
+  }), 'No commands recorded in this range.');
+}
+
+async function loadProjects(range) {
+  const data = await fetchJSON('/api/projects?range=' + range);
+  bars('projects', (data || []).map(function (p) { return { label: p.Project, value: p.Count }; }),
+    'No project activity in this range.');
+}
+
 async function loadModels(range) {
-  const data = await fetchJSON(API + '/api/models?range=' + range);
-  const ctx = document.getElementById('modelChart').getContext('2d');
-  if (modelChart) modelChart.destroy();
-  if (!data || data.length === 0) return;
-  modelChart = new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels: data.map(function(d) { return d.Model; }),
-      datasets: [{ data: data.map(function(d) { return d.Count; }), backgroundColor: ['#58a6ff','#3fb950','#d29922','#f85149','#bc8cff'] }]
-    },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#e6edf3' } } } }
-  });
+  const data = await fetchJSON('/api/models?range=' + range);
+  bars('models', (data || []).map(function (m) { return { label: m.Model, value: m.Count }; }),
+    'No AI calls in this range.');
 }
 
 async function loadQuality(range) {
-  const data = await fetchJSON(API + '/api/accuracy?range=' + range);
-  const total = data.accepted + data.edited + data.discarded;
+  const q = await fetchJSON('/api/accuracy?range=' + range);
+  const total = q.accepted + q.edited + q.discarded;
   const el = document.getElementById('quality');
-  if (total === 0) { el.innerHTML = '<p style="color:var(--muted)">No AI outputs recorded yet.</p>'; return; }
-  const pA = Math.round(data.accepted / total * 100);
-  const pE = Math.round(data.edited / total * 100);
-  const pD = 100 - pA - pE;
+  if (total === 0) { el.innerHTML = empty('No AI outputs rated yet.'); return; }
+  const pA = Math.round(q.accepted / total * 100), pE = Math.round(q.edited / total * 100), pD = 100 - pA - pE;
   let html = '<div class="quality-bar">';
   if (pA > 0) html += '<div class="q-accepted" style="width:' + pA + '%">' + pA + '%</div>';
   if (pE > 0) html += '<div class="q-edited" style="width:' + pE + '%">' + pE + '%</div>';
   if (pD > 0) html += '<div class="q-discarded" style="width:' + pD + '%">' + pD + '%</div>';
-  html += '</div>';
-  html += '<div class="legend">';
-  html += '<span class="la">Accepted (' + data.accepted + ')</span>';
-  html += '<span class="le">Edited (' + data.edited + ')</span>';
-  html += '<span class="ld">Discarded (' + data.discarded + ')</span>';
-  html += '</div>';
-  if (data.avg_edit_ratio > 0) html += '<p style="color:var(--muted);margin-top:8px;font-size:13px">Avg edit ratio: ' + Math.round(data.avg_edit_ratio * 100) + '%</p>';
+  html += '</div><div class="legend"><span class="la">Accepted (' + q.accepted + ')</span>' +
+    '<span class="le">Edited (' + q.edited + ')</span><span class="ld">Discarded (' + q.discarded + ')</span></div>';
   el.innerHTML = html;
 }
 
 async function loadModelPerf(range) {
-  const data = await fetchJSON(API + '/api/model-performance?range=' + range);
+  const data = await fetchJSON('/api/model-performance?range=' + range);
   const el = document.getElementById('model-perf');
-  if (!data || data.length === 0) { el.innerHTML = '<p style="color:var(--muted)">No AI timing data recorded yet.</p>'; return; }
-  let html = '<table><tr><th>Model</th><th>Calls</th><th>Avg</th><th>Min</th><th>Max</th><th></th></tr>';
-  data.forEach(function(m, i) {
-    const badge = i === 0 ? ' <span class="badge badge-fast">Fastest</span>' : '';
-    html += '<tr><td>' + m.Model + badge + '</td><td>' + m.Count + '</td>'
-      + '<td>' + (m.AvgMs / 1000).toFixed(1) + 's</td>'
-      + '<td>' + (m.MinMs / 1000).toFixed(1) + 's</td>'
-      + '<td>' + (m.MaxMs / 1000).toFixed(1) + 's</td>'
-      + '<td></td></tr>';
-  });
-  html += '</table>';
-  el.innerHTML = html;
-}
-
-async function loadModelByDate(range) {
-  const data = await fetchJSON(API + '/api/model-stats?range=' + range);
-  const el = document.getElementById('model-by-date');
-  if (!data || data.length === 0) { el.innerHTML = '<p style="color:var(--muted)">No model usage data yet.</p>'; return; }
-  let html = '<table><tr><th>Date</th><th>Model</th><th>Calls</th></tr>';
-  let lastDate = '';
-  data.forEach(function(m) {
-    const dateCell = m.Date !== lastDate ? m.Date : '';
-    const cls = m.Date !== lastDate ? ' class="date-group"' : '';
-    html += '<tr><td' + cls + '>' + dateCell + '</td><td>' + m.Model + '</td><td>' + m.Count + '</td></tr>';
-    lastDate = m.Date;
-  });
-  html += '</table>';
-  el.innerHTML = html;
+  if (!data || data.length === 0) { el.innerHTML = empty('No AI timing data in this range.'); return; }
+  const secs = function (ms) { return (ms / 1000).toFixed(1) + 's'; };
+  el.innerHTML = '<table><tr><th>Model</th><th>Calls</th><th>Avg</th><th>Min</th><th>Max</th><th>Tokens in</th><th>Tokens out</th></tr>' +
+    data.map(function (m, i) {
+      return '<tr><td>' + esc(m.Model) + (i === 0 && data.length > 1 ? '<span class="badge">Fastest</span>' : '') + '</td>' +
+        '<td>' + m.Count + '</td><td>' + secs(m.AvgMs) + '</td><td>' + secs(m.MinMs) + '</td><td>' + secs(m.MaxMs) + '</td>' +
+        '<td>' + m.InputTokens.toLocaleString() + '</td><td>' + m.OutputTokens.toLocaleString() + '</td></tr>';
+    }).join('') + '</table>';
 }
 
 async function loadAll(range) {
-  await Promise.all([loadHeatmap(), loadStats(range), loadModels(range), loadQuality(range), loadModelPerf(range), loadModelByDate(range)]);
+  const errBox = document.getElementById('error');
+  const results = await Promise.allSettled([
+    loadHeatmap(), loadStats(range), loadCommands(range), loadProjects(range),
+    loadModels(range), loadQuality(range), loadModelPerf(range),
+  ]);
+  const failed = results.filter(function (r) { return r.status === 'rejected'; });
+  errBox.style.display = failed.length ? 'block' : 'none';
+  errBox.textContent = failed.length
+    ? 'Some data could not be loaded (is git-agent still running the dashboard?): ' + failed[0].reason.message
+    : '';
 }
 
-document.getElementById('range-select').addEventListener('change', function(e) { loadAll(e.target.value); });
-loadAll('month');
+const select = document.getElementById('range-select');
+select.addEventListener('change', function () { loadAll(select.value); });
+loadAll(select.value);
 </script>
 </body>
 </html>

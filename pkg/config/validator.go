@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"strings"
 )
@@ -36,6 +37,9 @@ func Validate(cfg *AppConfig) *ValidationResult {
 	validateReview(&cfg.Review, result)
 	validateIssues(&cfg.Issues, result)
 
+	if t := cfg.CLI.Theme; t != "" && t != "default" {
+		result.Warnings = append(result.Warnings, fmt.Sprintf("cli.theme %q is not available (only \"default\"); using default", t))
+	}
 	if len(cfg.Teams) == 0 {
 		result.Warnings = append(result.Warnings, "no teams configured — project filtering will be disabled")
 	}
@@ -57,7 +61,37 @@ func validateGitLab(cfg *GitLabConfig, r *ValidationResult) {
 	}
 }
 
+// validateAIBaseURL keeps API keys off plain HTTP and out of URLs: https is
+// required except for loopback (local proxies, tests).
+func validateAIBaseURL(key, raw string, r *ValidationResult) {
+	if raw == "" {
+		return
+	}
+	u, err := url.Parse(raw)
+	switch {
+	case err != nil || u.Host == "":
+		r.Errors = append(r.Errors, fmt.Sprintf("%s is not a valid URL: %s", key, raw))
+	case u.User != nil || u.RawQuery != "" || u.Fragment != "":
+		r.Errors = append(r.Errors, fmt.Sprintf("%s must not contain credentials, a query or a fragment", key))
+	case u.Scheme == "https":
+	case u.Scheme == "http" && isLoopback(u.Hostname()):
+	default:
+		r.Errors = append(r.Errors, fmt.Sprintf("%s must use https (http is allowed only for localhost)", key))
+	}
+}
+
+func isLoopback(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
 func validateAI(cfg *AIConfig, r *ValidationResult) {
+	validateAIBaseURL("ai.anthropic.base_url", cfg.Anthropic.BaseURL, r)
+	validateAIBaseURL("ai.gemini.base_url", cfg.Gemini.BaseURL, r)
+	validateAIBaseURL("ai.nvidia.base_url", cfg.Nvidia.BaseURL, r)
 	supported := map[string]bool{"anthropic": true, "claude": true, "gemini": true, "google": true, "nvidia": true, "": true}
 	if !supported[strings.ToLower(cfg.Provider)] {
 		r.Errors = append(r.Errors, fmt.Sprintf("ai.provider '%s' is not supported (use: anthropic, gemini, nvidia)", cfg.Provider))

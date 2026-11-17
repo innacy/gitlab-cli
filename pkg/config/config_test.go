@@ -122,15 +122,20 @@ func TestActiveParentFolder_UnknownTeam(t *testing.T) {
 	}
 }
 
-// loadFromYAML writes a temp config file and loads it.
-func loadFromYAML(t *testing.T, yamlContent string) *AppConfig {
+// writeYAML writes a temp config file and returns its path.
+func writeYAML(t *testing.T, yamlContent string) string {
 	t.Helper()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yaml")
+	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(path, []byte(yamlContent), 0644); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := LoadFrom(path)
+	return path
+}
+
+// loadFromYAML writes a temp config file and loads it.
+func loadFromYAML(t *testing.T, yamlContent string) *AppConfig {
+	t.Helper()
+	cfg, err := LoadFrom(writeYAML(t, yamlContent))
 	if err != nil {
 		t.Fatalf("LoadFrom failed: %v", err)
 	}
