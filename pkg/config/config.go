@@ -39,6 +39,8 @@ type AppConfig struct {
 	ConfigFile string `mapstructure:"-" yaml:"-"`
 	// Environment is the active environment ("" when none).
 	Environment string `mapstructure:"-" yaml:"-"`
+
+	ignored []string // settings dropped at load time, see AIRedirectWarnings
 }
 
 // EnvironmentNames returns the configured environment names, sorted.
@@ -287,6 +289,7 @@ func loadWithViper(v *viper.Viper, path, env string) (*AppConfig, error) {
 	cfg.ConfigFile = v.ConfigFileUsed()
 	cfg.Environment = env
 	cfg.resolveOutputDirs()
+	cfg.dropUntrustedAIBaseURLs(path != "")
 
 	if err := cfg.EnsureOutputDirs(); err != nil {
 		return nil, fmt.Errorf("failed to create output directories: %w", err)
