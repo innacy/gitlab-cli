@@ -33,6 +33,9 @@ func (c *AppConfig) dropUntrustedAIBaseURLs(explicit bool) {
 
 // inUserDir reports whether path is inside Dir(), after resolving symlinks.
 func inUserDir(path string) bool {
+	if !filepath.IsAbs(Dir()) {
+		return false // no home dir: the cwd-relative fallback is not trusted
+	}
 	resolve := func(p string) string {
 		if r, err := filepath.EvalSymlinks(p); err == nil {
 			p = r

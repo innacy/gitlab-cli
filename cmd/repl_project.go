@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"net/url"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -760,46 +759,20 @@ func (r *replState) releaseCreateMRs(newPending []models.ProjectReleaseInfo) {
 // cross-project reference ("group/project#123"), since release MRs span many
 // projects and a bare "#123" would resolve against each MR's own project.
 func (r *replState) promptForReleaseTicket() string {
-	for {
-		input := r.promptForText("Release ticket (issue URL or group/project#123, blank to skip)")
-		if input == "" {
+	if r.promptForChoice("Release ticket", []string{"Select ticket", "Skip"}) != 0 {
+		return ""
+	}
+	project := r.getConfiguredProject()
+	if project == "" {
+		project = r.promptForProject("Issues project")
+		if project == "" {
 			return ""
 		}
-		project, iid, ok := parseIssueRef(input)
-		if !ok {
-			output.PrintWarning("Use an issue URL or group/project#123.")
-			continue
-		}
-		s := output.NewLoader(fmt.Sprintf(" Checking %s#%d...", project, iid))
-		s.Start()
-		issue, err := r.provider.Issues().GetIssue(project, iid)
-		s.Stop()
-		if err != nil {
-			output.PrintWarning(fmt.Sprintf("Ticket not found: %v", err))
-			continue
-		}
-		output.PrintSuccess(fmt.Sprintf("Linking ticket: %s", issue.Title))
-		return fmt.Sprintf("%s#%d", project, iid)
 	}
-}
-
-// parseIssueRef accepts ".../group/project/-/issues/123" or "group/project#123".
-func parseIssueRef(s string) (string, int, bool) {
-	var project, num string
-	if i := strings.Index(s, "/-/issues/"); i >= 0 {
-		base := s[:i]
-		if u, err := url.Parse(base); err == nil && u.Host != "" {
-			base = u.Path
-		}
-		project = strings.Trim(base, "/")
-		num = strings.SplitN(s[i+len("/-/issues/"):], "#", 2)[0]
-		num = strings.TrimRight(strings.SplitN(num, "?", 2)[0], "/")
-	} else if i := strings.LastIndex(s, "#"); i > 0 {
-		project, num = s[:i], s[i+1:]
+	project = r.resolveProject(project)
+	iid := r.pickTicket(project, "Select release ticket")
+	if iid <= 0 {
+		return ""
 	}
-	iid, err := strconv.Atoi(num)
-	if err != nil || iid <= 0 || !strings.Contains(project, "/") {
-		return "", 0, false
-	}
-	return project, iid, true
+	return fmt.Sprintf("%s#%d", project, iid)
 }

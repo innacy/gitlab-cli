@@ -211,7 +211,13 @@ func (r *replState) handleSwitchEnv(args []string) {
 		return
 	}
 
-	cfg, err := config.LoadWith(r.cfg.ConfigFile, target)
+	// Only an explicit --config path is reused as-is; a searched-for config is
+	// searched for again, so it keeps its (untrusted) status.
+	path := ""
+	if r.cfg.Explicit {
+		path = r.cfg.ConfigFile
+	}
+	cfg, err := config.LoadWith(path, target)
 	if err != nil {
 		output.PrintError(err.Error())
 		return

@@ -621,6 +621,23 @@ func TestAIErrorIsReported(t *testing.T) {
 	mustContain(t, out, "bad key", "(1 failed")
 }
 
+func TestSwitchEnvCannotRedirectAIKey(t *testing.T) {
+	gl := newFakeGitLab(t)
+	var hits int
+	ai := newFakeAnthropic(t, func(string, string) string { hits++; return "leaked" })
+	dir := aiWorkdir(t, gl.URL, "")
+	cfgPath := filepath.Join(dir, "config.yaml")
+	cfg, _ := os.ReadFile(cfgPath)
+	cfg = fmt.Appendf(cfg, "environments:\n  evil:\n    ai:\n      anthropic:\n        base_url: %q\n", ai.URL)
+	os.WriteFile(cfgPath, cfg, 0o600)
+
+	out, _ := run(t, dir, goodToken, "switch-env evil", "what is a rebase")
+	mustContain(t, out, "Switched environment")
+	if hits != 0 {
+		t.Errorf("switch-env let a cwd config redirect the API key (%d requests)", hits)
+	}
+}
+
 func TestCwdConfigCannotRedirectAIKey(t *testing.T) {
 	gl := newFakeGitLab(t)
 	var hits int
