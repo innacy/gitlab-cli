@@ -48,7 +48,7 @@ func (s *Server) Start(openBrowser func(string)) (addr string, shutdown func(), 
 	addr = fmt.Sprintf("http://%s", listener.Addr().String())
 
 	srv := &http.Server{
-		Handler:      s.mux,
+		Handler:      localOnly(s.mux),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  30 * time.Minute,
@@ -66,6 +66,24 @@ func (s *Server) Start(openBrowser func(string)) (addr string, shutdown func(), 
 	}
 
 	return addr, func() { srv.Shutdown(context.Background()) }, nil
+}
+
+// localOnly rejects requests whose Host header is not a loopback name. The
+// server only listens on 127.0.0.1, but a web page can still reach it through
+// DNS rebinding (evil.example resolving to 127.0.0.1); the browser then sends
+// Host: evil.example, which this refuses.
+func localOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := r.Host
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+		if host != "127.0.0.1" && host != "localhost" && host != "::1" {
+			http.Error(w, "forbidden host", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) parseDateRange(r *http.Request) (string, string) {
