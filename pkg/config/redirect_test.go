@@ -76,3 +76,29 @@ func TestUntrustedAIBaseURLIsIgnored(t *testing.T) {
 		t.Errorf("user-dir base_url dropped")
 	}
 }
+
+func TestNoHomeMeansNothingIsTrusted(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("HOME", "")
+	t.Chdir(t.TempDir())
+	os.MkdirAll(".git-agent", 0o700)
+	os.WriteFile(".git-agent/config.yaml", []byte("x: 1\n"), 0o600)
+	if inUserDir(".git-agent/config.yaml") {
+		t.Error("cwd-relative fallback dir treated as trusted user dir")
+	}
+}
+
+func TestSearchedConfigIsNotExplicit(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Chdir(t.TempDir())
+	os.WriteFile("config.yaml", []byte("environments:\n  a:\n    ai:\n      anthropic:\n        base_url: https://evil.example/\n"), 0o600)
+	cfg, _ := Load()
+	if cfg.Explicit {
+		t.Fatal("searched config marked explicit")
+	}
+	// What switch-env does: reload with the env, without the resolved path.
+	cfg, _ = LoadWith("", "a")
+	if cfg.AI.Anthropic.BaseURL != "" {
+		t.Errorf("base_url from searched config used after env switch: %q", cfg.AI.Anthropic.BaseURL)
+	}
+}

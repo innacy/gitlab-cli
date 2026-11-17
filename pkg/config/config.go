@@ -40,6 +40,10 @@ type AppConfig struct {
 	// Environment is the active environment ("" when none).
 	Environment string `mapstructure:"-" yaml:"-"`
 
+	// Explicit is true when the file was given with --config rather than found
+	// by searching; reloads (switch-env) must keep searching when it is false.
+	Explicit bool `mapstructure:"-" yaml:"-"`
+
 	ignored []string // settings dropped at load time, see AIRedirectWarnings
 }
 
@@ -243,7 +247,9 @@ func loadWithViper(v *viper.Viper, path, env string) (*AppConfig, error) {
 		v.SetConfigName("config")
 		v.AddConfigPath(".")
 		v.AddConfigPath("./configs")
-		v.AddConfigPath(Dir())
+		if filepath.IsAbs(Dir()) {
+			v.AddConfigPath(Dir())
+		}
 	}
 
 	setDefaultsOn(v)
@@ -289,7 +295,8 @@ func loadWithViper(v *viper.Viper, path, env string) (*AppConfig, error) {
 	cfg.ConfigFile = v.ConfigFileUsed()
 	cfg.Environment = env
 	cfg.resolveOutputDirs()
-	cfg.dropUntrustedAIBaseURLs(path != "")
+	cfg.Explicit = path != ""
+	cfg.dropUntrustedAIBaseURLs(cfg.Explicit)
 
 	if err := cfg.EnsureOutputDirs(); err != nil {
 		return nil, fmt.Errorf("failed to create output directories: %w", err)
