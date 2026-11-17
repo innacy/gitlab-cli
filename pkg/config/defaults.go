@@ -37,6 +37,16 @@ func setDefaultsOn(v *viper.Viper) {
 	v.SetDefault("ai.nvidia.enable_thinking", false)
 	v.SetDefault("ai.nvidia.reasoning_budget", 16384)
 
+	// Same sections as configs/default.yaml, so mr-review works without a
+	// review: block in config.yaml.
+	v.SetDefault("review.template.sections", []map[string]interface{}{
+		{"name": "Summary", "prompt": "Provide a brief summary of the changes", "required": true},
+		{"name": "Code Quality", "prompt": "Assess code quality, readability, and maintainability", "required": true},
+		{"name": "Security Concerns", "prompt": "Identify any security vulnerabilities or risks", "required": true},
+		{"name": "Performance Impact", "prompt": "Evaluate potential performance implications", "required": false},
+		{"name": "Suggestions", "prompt": "Provide actionable improvement suggestions", "required": true},
+		{"name": "Approval Recommendation", "prompt": "Recommend approve, request changes, or reject with reasoning", "required": true},
+	})
 	v.SetDefault("review.output.directory", "./.data")
 	v.SetDefault("review.output.filename_pattern", "{project}_mr_review_{mr_number}.md")
 	v.SetDefault("review.output.include_metadata", true)
