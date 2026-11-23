@@ -163,7 +163,7 @@ type CLIConfig struct {
 	Verbose            bool   `mapstructure:"verbose" yaml:"verbose"`
 	ConfirmBeforePost  bool   `mapstructure:"confirm_before_post" yaml:"confirm_before_post"`
 	NonInteractive     bool   `mapstructure:"non_interactive" yaml:"non_interactive"`
-	AutoConfirm        bool   `mapstructure:"auto_confirm" yaml:"auto_confirm"`
+	AutoConfirm        bool   `mapstructure:"auto_confirm" yaml:"auto_confirm"` // Deprecated: ignored; confirmations always prompt.
 	IdleTimeoutMinutes int    `mapstructure:"idle_timeout_minutes" yaml:"idle_timeout_minutes"`
 	OutputFormat       string `mapstructure:"output_format" yaml:"output_format"`
 	Theme              string `mapstructure:"theme" yaml:"theme"`

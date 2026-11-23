@@ -45,6 +45,9 @@ func (c *Client) listProjectIssues(projectPath string, filter models.IssueFilter
 		labels := gogitlab.LabelOptions(filter.Labels)
 		opts.Labels = &labels
 	}
+	if filter.AuthorID > 0 {
+		opts.AuthorID = gogitlab.Ptr(filter.AuthorID)
+	}
 	if filter.Milestone != "" {
 		opts.Milestone = gogitlab.Ptr(filter.Milestone)
 	}
@@ -90,6 +93,7 @@ func (c *Client) ListProjectLabels(projectPath string) ([]string, error) {
 	}
 
 	opts := &gogitlab.ListLabelsOptions{
+		IncludeAncestorGroups: gogitlab.Ptr(true),
 		ListOptions: gogitlab.ListOptions{
 			PerPage: 100,
 			Page:    1,
@@ -115,6 +119,18 @@ func (c *Client) ListProjectLabels(projectPath string) ([]string, error) {
 	}
 
 	return labels, nil
+}
+
+// CreateProjectLabel creates a label in the project.
+func (c *Client) CreateProjectLabel(projectPath, name, color string) error {
+	project, err := FindProject(c.api, projectPath)
+	if err != nil {
+		return err
+	}
+	if _, _, err := c.api.Labels.CreateLabel(project.ID, &gogitlab.CreateLabelOptions{Name: gogitlab.Ptr(name), Color: gogitlab.Ptr(color)}); err != nil {
+		return utils.NewGitLabError(fmt.Sprintf("failed to create label '%s' in '%s'", name, projectPath), err)
+	}
+	return nil
 }
 
 // CreateIssue creates a new issue in the target project.
@@ -149,9 +165,11 @@ func convertIssue(issue *gogitlab.Issue) models.Issue {
 		assignee = issue.Assignee.Username
 	}
 
+	authorID := 0
 	author := ""
 	if issue.Author != nil {
 		author = issue.Author.Username
+		authorID = issue.Author.ID
 	}
 
 	milestone := ""
@@ -179,6 +197,7 @@ func convertIssue(issue *gogitlab.Issue) models.Issue {
 		Labels:      issue.Labels,
 		Assignee:    assignee,
 		Author:      author,
+		AuthorID:    authorID,
 		Milestone:   milestone,
 		DueDate:     dueDate,
 		WebURL:      issue.WebURL,

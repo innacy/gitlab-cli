@@ -344,6 +344,10 @@ func (s *issueService) ListProjectLabels(project string) ([]string, error) {
 	return s.p.client.ListProjectLabels(project)
 }
 
+func (s *issueService) CreateProjectLabel(project, name, color string) error {
+	return s.p.client.CreateProjectLabel(project, name, color)
+}
+
 func (s *issueService) GetIssue(project string, issueIID int) (*models.Issue, error) {
 	api := s.p.client.API()
 	proj, err := rawgitlab.FindProject(api, project)
@@ -507,9 +511,11 @@ func convertGitLabIssue(issue *gogitlab.Issue) models.Issue {
 	if issue.Assignee != nil {
 		assignee = issue.Assignee.Username
 	}
+	authorID := 0
 	author := ""
 	if issue.Author != nil {
 		author = issue.Author.Username
+		authorID = issue.Author.ID
 	}
 	milestone := ""
 	if issue.Milestone != nil {
@@ -529,6 +535,7 @@ func convertGitLabIssue(issue *gogitlab.Issue) models.Issue {
 		Labels:      issue.Labels,
 		Assignee:    assignee,
 		Author:      author,
+		AuthorID:    authorID,
 		Milestone:   milestone,
 		DueDate:     dueDate,
 		WebURL:      issue.WebURL,

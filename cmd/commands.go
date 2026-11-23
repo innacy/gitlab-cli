@@ -82,7 +82,8 @@ func init() {
 		{name: "ticket-update", usage: "<project> <number>", desc: "Update ticket metadata", section: "Tickets / Issues", category: audit.CategoryGitLabMutation, complete: projects, run: (*replState).handleTicketUpdate},
 		{name: "ticket-search", usage: "<project>", desc: "Search tickets", section: "Tickets / Issues", category: audit.CategoryRead, complete: projects, run: (*replState).handleTicketSearch},
 		{name: "tickets", desc: "Generate open tickets report", section: "Tickets / Issues", category: audit.CategoryRead, run: (*replState).handleTickets},
-		{name: "tickets-black", desc: "Generate malformed tickets report", section: "Tickets / Issues", category: audit.CategoryRead, run: (*replState).handleTicketsBlack},
+		{name: "tickets-thin", desc: "Report tickets with missing or thin descriptions", section: "Tickets / Issues", category: audit.CategoryRead, run: (*replState).handleTicketsBlack},
+		{name: "tickets-unassigned", usage: "[--dry-run]", desc: "Assign unassigned open tickets to their creator", section: "Tickets / Issues", category: audit.CategoryGitLabMutation, run: (*replState).handleTicketsUnassigned},
 
 		{name: "list", desc: "List team projects (alias: projects)", section: "Repository", category: audit.CategoryRead, run: noArgs((*replState).handleList)},
 		{name: "diff", usage: "<project>", desc: "Compare tags or branches", section: "Repository", category: audit.CategoryRead, complete: projects, run: (*replState).handleDiff},
@@ -93,6 +94,7 @@ func init() {
 		{name: "create-ticket-desc", usage: "[project]", desc: "Generate ticket description from linked MRs", section: "Content Generation", category: audit.CategoryAIGeneration, complete: projects, run: (*replState).handleTicketDescribe},
 		{name: "create-epic-content", usage: "[project]", desc: "Generate epic content from branch diff", section: "Content Generation", category: audit.CategoryAIGeneration, complete: projects, run: (*replState).handleCreateEpicContent},
 
+		{name: "tickets-label", usage: "[--dry-run] [--all]", desc: "AI-suggest labels for your own open tickets", section: "Tickets / Issues", category: audit.CategoryAIGeneration, run: (*replState).handleTicketsLabel},
 		{name: "ship", desc: "Full flow: ticket → folders → commit → push → MR → update ticket", section: "Workflow", category: audit.CategoryAIGeneration, run: (*replState).handleShip},
 
 		{name: "stats", usage: "[today|week|month [YYYY-MM]|year [YYYY]|dashboard|export csv|json]", desc: "Activity summary, web dashboard or export", section: "Stats", subs: []string{"today", "week", "month", "year", "dashboard", "export"}, run: (*replState).handleStats},
@@ -115,7 +117,7 @@ func init() {
 	}
 }
 
-var commandAliases = map[string]string{"projects": "list"}
+var commandAliases = map[string]string{"projects": "list", "tickets-black": "tickets-thin"}
 
 var renamedCommands = map[string]string{
 	"mr":       "Command renamed → use 'mr-review' instead.",

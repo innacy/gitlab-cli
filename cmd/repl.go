@@ -418,6 +418,9 @@ func RunREPL(cfg *config.AppConfig) {
 		idleTimeout = 1 * time.Hour
 	}
 	printBanner(idleTimeout)
+	if cfg.CLI.AutoConfirm {
+		output.PrintWarning("cli.auto_confirm is deprecated and ignored; confirmations always prompt. Remove it from config.yaml.")
+	}
 
 	r.idleTimer = time.AfterFunc(idleTimeout, func() {
 		r.timedOut.Store(true)

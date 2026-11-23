@@ -245,7 +245,7 @@ underscores: `GITLAB_AI_GITLAB_BASE_URL`, `GITLAB_AI_AI_PROVIDER`,
 | `cli.color_output`                      | `true`                  | Coloured output                                                |
 | `cli.verbose`                           | `false`                 | Debug logging                                                  |
 | `cli.confirm_before_post`               | `true`                  | Ask before posting comments                                    |
-| `cli.auto_confirm`                      | `false`                 | Answer yes to confirmations, including merge, close and cancel |
+| `cli.auto_confirm`                      | `false`                 | **Deprecated, ignored.** Confirmations always prompt          |
 | `cli.idle_timeout_minutes`              | `60`                    | Exit the REPL after this many idle minutes                     |
 | `cli.open_in_browser`                   | `true`                  | Open created MRs, tickets and the dashboard in the browser     |
 | `cli.theme`                             | `default`               | Colour theme                                                   |
@@ -317,7 +317,9 @@ It prints no banner and no session summary, and records to the same audit trail.
 | `ticket-update <project> <number>` | Update ticket metadata                       |
 | `ticket-search <project>`          | Search tickets                               |
 | `tickets`                          | Generate an open-tickets report              |
-| `tickets-black`                    | Generate a malformed-tickets report          |
+| `tickets-thin` (alias `tickets-black`) | Report tickets with missing or thin descriptions |
+| `tickets-unassigned [--dry-run]`   | Assign unassigned open tickets to their creator |
+| `tickets-label [--dry-run] [--all]` | AI-suggest labels (max 3, or create one) for your own open tickets; `--all` includes already-labelled |
 
 ### Repository
 

@@ -507,12 +507,8 @@ func (r *replState) handleMRMerge(args []string) {
 	squash := r.cfg.Merge.Squash
 	removeSource := r.cfg.Merge.RemoveSourceBranch
 
-	if !r.cfg.CLI.AutoConfirm {
-		squash = r.promptForYesNo(fmt.Sprintf("Squash commits? (default: %v)", squash))
-		removeSource = r.promptForYesNo(fmt.Sprintf("Remove source branch? (default: %v)", removeSource))
-	} else {
-		output.PrintSuccess(fmt.Sprintf("Using merge defaults: squash=%v, remove_source=%v", squash, removeSource))
-	}
+	squash = r.promptForYesNo(fmt.Sprintf("Squash commits? (default: %v)", squash))
+	removeSource = r.promptForYesNo(fmt.Sprintf("Remove source branch? (default: %v)", removeSource))
 
 	s := output.NewLoader(fmt.Sprintf(" Merging MR #%d...", mrNumber))
 	s.Start()

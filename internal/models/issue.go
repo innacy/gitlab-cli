@@ -26,6 +26,7 @@ type Issue struct {
 	Labels      []string  `json:"labels"`
 	Assignee    string    `json:"assignee"`
 	Author      string    `json:"author"`
+	AuthorID    int       `json:"author_id"`
 	Milestone   string    `json:"milestone"`
 	DueDate     string    `json:"due_date"`
 	WebURL      string    `json:"web_url"`
@@ -48,6 +49,7 @@ type IssueFilter struct {
 	State     string   `json:"state,omitempty"`
 	Labels    []string `json:"labels,omitempty"`
 	Milestone string   `json:"milestone,omitempty"`
+	AuthorID  int      `json:"author_id,omitempty"`
 	Page      int      `json:"page,omitempty"`
 	PerPage   int      `json:"per_page,omitempty"`
 }

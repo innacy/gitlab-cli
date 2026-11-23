@@ -249,10 +249,6 @@ func (r *replState) promptForNumber(label string) int {
 }
 
 func (r *replState) promptForChoice(title string, options []string) int {
-	if len(options) == 1 && r.cfg.CLI.AutoConfirm {
-		output.PrintSuccess(fmt.Sprintf("Auto-selected: %s", options[0]))
-		return 0
-	}
 	return r.interactiveSelect(title, options)
 }
 
@@ -294,12 +290,12 @@ func (r *replState) promptForMultiSelect(title string, items []string, batchSize
 		for {
 			options := make([]string, 0, len(available)+3)
 			if batchHasSelection {
-				options = append(options, "Skip rest")
-				options = append(options, "Done with this batch")
+				options = append(options, "Stop selecting")
+				options = append(options, "Continue to next batch")
 			} else {
 				options = append(options, "Skip")
 			}
-			options = append(options, "Select all in this batch")
+			options = append(options, "Select all & continue")
 			for _, item := range available {
 				options = append(options, item.label)
 			}
@@ -312,13 +308,13 @@ func (r *replState) promptForMultiSelect(title string, items []string, batchSize
 				return selected
 			}
 			if batchHasSelection {
-				if choice == 0 { // "Skip rest"
+				if choice == 0 { // "Stop selecting"
 					return selected
 				}
-				if choice == 1 { // "Done with this batch"
+				if choice == 1 { // "Continue to next batch"
 					break
 				}
-				if choice == 2 { // "Select all in this batch"
+				if choice == 2 { // "Select all & continue"
 					for _, item := range available {
 						selected = append(selected, item.originalIdx)
 					}
@@ -329,7 +325,7 @@ func (r *replState) promptForMultiSelect(title string, items []string, batchSize
 				if choice == 0 { // "Skip"
 					break
 				}
-				if choice == 1 { // "Select all in this batch"
+				if choice == 1 { // "Select all & continue"
 					for _, item := range available {
 						selected = append(selected, item.originalIdx)
 					}
@@ -361,16 +357,11 @@ func (r *replState) promptForMultiSelect(title string, items []string, batchSize
 }
 
 func (r *replState) promptForYesNo(question string) bool {
-	if r.cfg.CLI.AutoConfirm {
-		output.PrintSuccess(fmt.Sprintf("Auto-confirmed: %s → Yes", question))
-		return true
-	}
 	choice := r.interactiveSelect(question, []string{"Yes", "No"})
 	return choice == 0
 }
 
-// confirm asks before an irreversible GitLab change. auto_confirm skips it;
-// declining is not an error.
+// confirm asks before an irreversible GitLab change; declining is not an error.
 func (r *replState) confirm(question string) bool {
 	if r.promptForYesNo(question) {
 		return true

@@ -558,7 +558,7 @@ func (r *replState) handleTicketsBlack(args []string) {
 	s.Stop()
 
 	now := time.Now()
-	filename := filepath.Join(r.cfg.Issues.Output.Directory, fmt.Sprintf("tickets_black_%s.md", now.Format("2006-01-02_15-04")))
+	filename := filepath.Join(r.cfg.Issues.Output.Directory, fmt.Sprintf("tickets_thin_%s.md", now.Format("2006-01-02_15-04")))
 	content := buildTicketsBlackMarkdown(malformed, minDescriptionChars, now)
 	if err := writeFile(filename, content); err != nil {
 		output.PrintError(fmt.Sprintf("Failed to save malformed tickets report: %v", err))
@@ -591,18 +591,26 @@ func (r *replState) filterIgnoredProjects(projects []models.ProjectInfo) []model
 		return projects
 	}
 
-	ignored := make(map[string]bool, len(ignoredList))
-	for _, p := range ignoredList {
-		ignored[strings.ToLower(strings.TrimSpace(p))] = true
-	}
-
 	filtered := make([]models.ProjectInfo, 0, len(projects))
 	for _, p := range projects {
-		if !ignored[strings.ToLower(p.Path)] {
+		if !isIgnoredPath(p.Path, ignoredList) {
 			filtered = append(filtered, p)
 		}
 	}
 	return filtered
+}
+
+// isIgnoredPath reports whether path equals an ignored entry or sits inside
+// it (an entry naming a group ignores every project under that group).
+func isIgnoredPath(path string, ignoredList []string) bool {
+	path = strings.ToLower(path)
+	for _, ign := range ignoredList {
+		ign = strings.Trim(strings.ToLower(strings.TrimSpace(ign)), "/")
+		if ign != "" && (path == ign || strings.HasPrefix(path, ign+"/")) {
+			return true
+		}
+	}
+	return false
 }
 
 // ─── Release ─────────────────────────────────────────────────────────────────
