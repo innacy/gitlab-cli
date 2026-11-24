@@ -58,7 +58,6 @@ func (r *replState) handleDoctor() {
 	default:
 		output.PrintSuccess(fmt.Sprintf("AI: %s — %s, key %s (from %s)", ai.Label, ai.Model, mask(ai.APIKey), ai.KeySource))
 	}
-	fmt.Println()
 }
 
 // mask hides a secret, keeping only its last 4 characters.

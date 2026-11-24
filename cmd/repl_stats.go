@@ -155,10 +155,8 @@ func (r *replState) handleStats(args []string) {
 		}
 	}
 
-	fmt.Println()
 	output.ThemeHeader("Stats")
 	output.ThemeBox(lines)
-	fmt.Println()
 }
 
 func (r *replState) handleStatsDashboard() {
@@ -177,11 +175,8 @@ func (r *replState) handleStatsDashboard() {
 		return
 	}
 
-	fmt.Println()
 	output.PrintSuccess(fmt.Sprintf("Dashboard running at %s", addr))
-	fmt.Println()
 	output.GetTheme().Muted.Println("  Press Enter to stop the dashboard and return to the REPL.")
-	fmt.Println()
 
 	r.rl.SetPrompt("")
 	r.rl.Readline()
@@ -189,7 +184,6 @@ func (r *replState) handleStatsDashboard() {
 	r.resetIdle()
 	shutdown()
 	output.PrintSuccess("Dashboard stopped.")
-	fmt.Println()
 }
 
 func successRate(s *audit.SummaryResult) string {

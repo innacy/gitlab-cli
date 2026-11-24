@@ -86,7 +86,6 @@ func (r *replState) handleCreateTicketContent(args []string) {
 
 	output.PrintFilePath(filename)
 	r.recordEffect(audit.CategoryFileWrite)
-	fmt.Println()
 
 	ticketEventID := r.curEventID
 	r.auditAI(ticketEventID, chatResult)
@@ -129,7 +128,6 @@ func (r *replState) createNewTicket(project, title, description string) {
 	r.recordEffect(audit.CategoryTicketCreated)
 	output.PrintSuccess(fmt.Sprintf("Ticket #%d created: %s", issue.IID, issue.Title))
 	output.PrintURLOpen(issue.WebURL)
-	fmt.Println()
 	r.refreshCacheAsync()
 }
 
@@ -154,7 +152,6 @@ func (r *replState) updateExistingTicket(project, description string) {
 
 	output.PrintSuccess(fmt.Sprintf("Ticket #%d updated: %s", updated.IID, updated.Title))
 	output.PrintURLOpen(updated.WebURL)
-	fmt.Println()
 }
 
 // fetchFileContextForDiff reads full file contents for changed files where the diff alone may lack context.
@@ -244,7 +241,6 @@ func (r *replState) handleTicketDescribe(args []string) {
 	for _, mr := range linkedMRs {
 		fmt.Printf("    !%d  %s → %s  [%s]  %s\n", mr.IID, mr.SourceBranch, mr.TargetBranch, mr.State, mr.Title)
 	}
-	fmt.Println()
 
 	// Step 3: Collect diffs from all linked MRs
 	s = output.NewLoader(" Fetching diffs from linked MRs...")
@@ -312,8 +308,6 @@ func (r *replState) handleTicketDescribe(args []string) {
 
 	title, description := parseContentResponse(response)
 
-	fmt.Println()
-
 	s = output.NewLoader(fmt.Sprintf(" Updating ticket #%d...", issueIID))
 	s.Start()
 	updated, err := r.provider.Issues().UpdateIssue(project, issueIID, platform.UpdateIssueOptions{
@@ -329,7 +323,6 @@ func (r *replState) handleTicketDescribe(args []string) {
 
 	output.PrintSuccess(fmt.Sprintf("Ticket #%d updated: %s", updated.IID, updated.Title))
 	output.PrintURLOpen(updated.WebURL)
-	fmt.Println()
 }
 
 // pickTicket shows latest 5 tickets + manual entry option. Returns issue IID or 0 on cancel.
@@ -438,7 +431,6 @@ func (r *replState) handleCreateEpicContent(args []string) {
 
 	output.PrintFilePath(filename)
 	r.recordEffect(audit.CategoryFileWrite)
-	fmt.Println()
 
 	epicEventID := r.curEventID
 	r.auditAI(epicEventID, chatResult)
@@ -462,7 +454,6 @@ func (r *replState) handleCreateEpicContent(args []string) {
 
 		output.PrintSuccess(fmt.Sprintf("Epic #%d created: %s", epic.IID, epic.Title))
 		output.PrintURLOpen(epic.WebURL)
-		fmt.Println()
 		r.auditOutcome(epicEventID, audit.OutcomeAccepted, nil)
 	} else {
 		r.auditOutcome(epicEventID, audit.OutcomeDiscarded, nil)

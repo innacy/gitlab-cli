@@ -113,7 +113,6 @@ func (r *replState) handleTicketsUnassigned(args []string) {
 	for _, t := range todo {
 		fmt.Printf("  %s#%d  %s\n      creator @%s → assign @%s\n", t.project, t.issue.IID, t.issue.Title, t.issue.Author, t.targetHandle)
 	}
-	fmt.Println()
 
 	if dryRun {
 		output.PrintSuccess(fmt.Sprintf("Dry run: %d ticket(s) would be assigned.", len(todo)))

@@ -68,7 +68,6 @@ func (r *replState) handleDiff(args []string) {
 	}
 
 	// Step 4: Display summary
-	fmt.Println()
 	output.PrintSuccess(fmt.Sprintf("Diff: %s..%s", from, to))
 	output.PrintSuccess(fmt.Sprintf("Files changed: %d, +%d -%d lines, %d commits",
 		len(diffResult.Files), diffResult.TotalAdditions, diffResult.TotalDeletions, len(diffResult.Commits)))
@@ -93,7 +92,6 @@ func (r *replState) handleDiff(args []string) {
 		fmt.Println()
 		fmt.Println(diffContent)
 	}
-	fmt.Println()
 }
 
 func (r *replState) promptForTwoTags(project string) (string, string) {

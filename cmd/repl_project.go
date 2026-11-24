@@ -30,7 +30,6 @@ func (r *replState) handleList() {
 	}
 
 	output.PrintProjectsTable(projects)
-	fmt.Println()
 }
 
 // ─── Branch Cleanup ──────────────────────────────────────────────────────────
@@ -66,7 +65,6 @@ func (r *replState) handleBranchCleanup(args []string) {
 
 	if len(merged) == 0 {
 		output.PrintSuccess("No stale or merged branches found. All clean!")
-		fmt.Println()
 		return
 	}
 
@@ -75,7 +73,6 @@ func (r *replState) handleBranchCleanup(args []string) {
 
 	if !r.promptForYesNoSafe(fmt.Sprintf("Delete all %d branches listed above?", len(merged))) {
 		output.PrintWarning("Branch cleanup cancelled.")
-		fmt.Println()
 		return
 	}
 
@@ -90,9 +87,7 @@ func (r *replState) handleBranchCleanup(args []string) {
 		}
 	}
 
-	fmt.Println()
 	output.PrintSuccess(fmt.Sprintf("Cleanup complete: %d/%d branches deleted", deleted, len(merged)))
-	fmt.Println()
 }
 
 // ─── Tickets ─────────────────────────────────────────────────────────────────
@@ -203,7 +198,6 @@ func (r *replState) handleTicketOpen(args []string) {
 	}
 	project = r.resolveProject(project)
 
-	fmt.Println()
 	contextMode := r.promptForChoice("How would you like to provide ticket context?", []string{
 		"Type a summary manually",
 		"Auto-generate from branch commits & diff",
@@ -285,7 +279,6 @@ func (r *replState) handleTicketOpen(args []string) {
 		output.PrintSuccess(fmt.Sprintf("Label: %s", strings.Join(createLabels, ", ")))
 	}
 	output.PrintURLOpen(issue.WebURL)
-	fmt.Println()
 
 	r.refreshCacheAsync()
 }
@@ -314,7 +307,6 @@ func (r *replState) handleTicketClose(args []string) {
 		return
 	}
 	output.PrintSuccess(fmt.Sprintf("Ticket #%d closed", issueNumber))
-	fmt.Println()
 }
 
 // ─── Ticket Reopen ───────────────────────────────────────────────────────────
@@ -338,7 +330,6 @@ func (r *replState) handleTicketReopen(args []string) {
 		return
 	}
 	output.PrintSuccess(fmt.Sprintf("Ticket #%d reopened", issueNumber))
-	fmt.Println()
 }
 
 // ─── Ticket Update ───────────────────────────────────────────────────────────
@@ -391,7 +382,6 @@ func (r *replState) handleTicketUpdate(args []string) {
 		return
 	}
 	output.PrintSuccess(fmt.Sprintf("Ticket #%d updated: %s", issue.IID, issue.Title))
-	fmt.Println()
 }
 
 // ─── Ticket Search ───────────────────────────────────────────────────────────
@@ -441,7 +431,6 @@ func (r *replState) handleTicketSearch(args []string) {
 		TotalCount:  len(issues),
 	}
 	output.PrintIssuesTable(result)
-	fmt.Println()
 }
 
 // ─── Shared Ticket Arg Parser ────────────────────────────────────────────────
@@ -570,7 +559,6 @@ func (r *replState) handleTicketsBlack(args []string) {
 	}
 	output.PrintSuccess("Malformed tickets report saved to:")
 	output.PrintFilePath(filename)
-	fmt.Println()
 
 	r.recordEffect(audit.CategoryFileWrite)
 }
@@ -705,7 +693,6 @@ func (r *replState) handleRelease() {
 
 	output.PrintSuccess("Release report saved to:")
 	output.PrintFilePath(filename)
-	fmt.Println()
 
 	r.recordEffect(audit.CategoryFileWrite)
 
@@ -737,9 +724,7 @@ func (r *replState) releaseCreateMRs(newPending []models.ProjectReleaseInfo) {
 		mrDesc += fmt.Sprintf("\n\nRelated to %s", ref)
 	}
 
-	fmt.Println()
 	output.PrintSuccess(fmt.Sprintf("Creating release MRs for %d repo(s)...", len(indices)))
-	fmt.Println()
 
 	for _, idx := range indices {
 		p := newPending[idx]
@@ -760,7 +745,6 @@ func (r *replState) releaseCreateMRs(newPending []models.ProjectReleaseInfo) {
 		output.PrintURLOpen(mr.WebURL)
 		r.recordEffect(audit.CategoryMRCreated)
 	}
-	fmt.Println()
 }
 
 // promptForReleaseTicket asks for an optional ticket and returns a full

@@ -43,7 +43,6 @@ func (r *replState) handleTicketOpenEmpty(args []string) {
 	output.PrintSuccess(fmt.Sprintf("Ticket #%d created: %s", issue.IID, issue.Title))
 	output.PrintSuccess(fmt.Sprintf("Assignee: @%s", r.provider.Username()))
 	output.PrintURLOpen(issue.WebURL)
-	fmt.Println()
 	r.refreshCacheAsync()
 }
 
@@ -99,7 +98,6 @@ func (r *replState) handleShip(args []string) {
 
 	output.PrintSuccess(fmt.Sprintf("Working with ticket #%d", ticketIID))
 	output.PrintURLOpen(ticketURL)
-	fmt.Println()
 
 	var hasDescription bool
 	if issue, err := r.provider.Issues().UpdateIssue(ticketProject, ticketIID, platform.UpdateIssueOptions{
@@ -121,7 +119,6 @@ func (r *replState) handleShip(args []string) {
 	}
 
 	output.PrintSuccess(fmt.Sprintf("Processing %d folder(s)...", len(folders)))
-	fmt.Println()
 
 	var successCount int
 	for _, folder := range folders {
@@ -136,8 +133,9 @@ func (r *replState) handleShip(args []string) {
 		return
 	}
 
-	output.PrintSuccess(fmt.Sprintf("Shipped %d/%d folder(s).", successCount, len(folders)))
+	// Folder blocks each open with a blank line; close the last one the same way.
 	fmt.Println()
+	output.PrintSuccess(fmt.Sprintf("Shipped %d/%d folder(s).", successCount, len(folders)))
 
 	if hasDescription {
 		output.PrintSuccess(fmt.Sprintf("Ticket #%d already has a description — skipping update.", ticketIID))
@@ -175,7 +173,6 @@ func (r *replState) shipGetTicket() (iid int, webURL string, project string) {
 		output.PrintSuccess(fmt.Sprintf("Ticket #%d created: %s", issue.IID, issue.Title))
 		output.PrintSuccess(fmt.Sprintf("Assignee: @%s", r.provider.Username()))
 		output.PrintURLOpen(issue.WebURL)
-		fmt.Println()
 		return issue.IID, issue.WebURL, project
 
 	case 1:
@@ -338,8 +335,8 @@ func (r *replState) shipProcessFolder(folder string, ticketIID int, ticketURL st
 	}
 	output.PrintSuccess("Pushed successfully")
 
-	s = output.NewLoader(" Resolving GitLab project...")
-	s.Start()
+	// resolveProject runs its own loader and prints the match; an outer
+	// spinner here would leave its frame on the line it prints.
 	projectPath := r.resolveProject(folderName)
 	if projectPath == folderName {
 		remotePath := getGitLabProjectFromRemote(folder)
@@ -347,10 +344,8 @@ func (r *replState) shipProcessFolder(folder string, ticketIID int, ticketURL st
 			projectPath = remotePath
 		}
 	}
-	s.Stop()
 	if projectPath == "" {
 		output.PrintWarning("Could not determine GitLab project. Push succeeded but MR was not created.")
-		fmt.Println()
 		return "", true
 	}
 
@@ -384,15 +379,12 @@ func (r *replState) shipProcessFolder(folder string, ticketIID int, ticketURL st
 
 	if err != nil {
 		output.PrintWarning(fmt.Sprintf("Push succeeded but MR creation failed: %v", err))
-		fmt.Println()
 		return "", true
 	}
 
-	fmt.Println()
 	output.PrintSuccess(fmt.Sprintf("MR !%d created: %s", mr.IID, mr.Title))
 	output.PrintSuccess(fmt.Sprintf("Branch: %s → %s", branchName, targetBranch))
 	output.PrintURLOpen(mr.WebURL)
-	fmt.Println()
 	r.recordEffect(audit.CategoryMRCreated)
 
 	return mr.WebURL, true
@@ -522,7 +514,6 @@ func (r *replState) shipUpdateTicketDesc(project string, ticketIID int) {
 	for _, mr := range linkedMRs {
 		fmt.Printf("    !%d  %s → %s  [%s]  %s\n", mr.IID, mr.SourceBranch, mr.TargetBranch, mr.State, mr.Title)
 	}
-	fmt.Println()
 
 	s = output.NewLoader(" Fetching diffs from linked MRs...")
 	s.Start()
@@ -609,7 +600,6 @@ func (r *replState) shipUpdateTicketDesc(project string, ticketIID int) {
 
 	output.PrintSuccess(fmt.Sprintf("Ticket #%d updated: %s", updated.IID, updated.Title))
 	output.PrintURLOpen(updated.WebURL)
-	fmt.Println()
 }
 
 // ─── Git Helpers ─────────────────────────────────────────────────────────────

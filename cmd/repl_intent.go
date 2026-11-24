@@ -79,7 +79,6 @@ func (r *replState) handleIntentOrChat(line string) {
 	if intent.Confidence >= 0.8 {
 		parts := buildCommandParts(intent)
 		output.GetTheme().Muted.Printf("  → %s\n", strings.Join(parts, " "))
-		fmt.Println()
 		r.dispatch(strings.Join(parts, " "))
 	} else if intent.Confidence >= 0.5 {
 		parts := buildCommandParts(intent)

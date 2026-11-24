@@ -123,7 +123,6 @@ func PrintProjectsTable(projects []models.ProjectInfo) {
 	fmt.Println()
 	headerColor := GetTheme().Header
 	headerColor.Println("Accessible Projects")
-	fmt.Println()
 
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"Path", "Name", "Branch", "Last Activity"})
@@ -288,7 +287,6 @@ func PrintPipelineStatus(pipeline *models.PipelineInfo) {
 		}
 		table.Render()
 	}
-	fmt.Println()
 }
 
 // PrintReleaseReport displays the release status of all projects.
@@ -374,7 +372,6 @@ func PrintReleaseReport(report *models.ReleaseReport) {
 
 	total := len(allPending) + len(report.Released) + len(report.Invalid)
 	fmt.Printf("  Total: %d projects checked\n", total)
-	fmt.Println()
 }
 
 // Helper functions

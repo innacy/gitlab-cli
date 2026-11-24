@@ -45,7 +45,6 @@ func (r *replState) handlePipeline(args []string) {
 	}
 
 	output.PrintPipelinesTable(pipelines, fmt.Sprintf("Pipelines — %s", project))
-	fmt.Println()
 }
 
 // ─── Pipeline View ───────────────────────────────────────────────────────────
@@ -175,7 +174,6 @@ func (r *replState) handlePipelineLogs(args []string) {
 		fmt.Println()
 		fmt.Println(log)
 	}
-	fmt.Println()
 }
 
 // ─── Pipeline Retry ──────────────────────────────────────────────────────────
@@ -240,7 +238,6 @@ func (r *replState) handlePipelineRetry(args []string) {
 	if pl.WebURL != "" {
 		output.PrintURLOpen(pl.WebURL)
 	}
-	fmt.Println()
 }
 
 // ─── Pipeline Cancel ─────────────────────────────────────────────────────────
@@ -305,5 +302,4 @@ func (r *replState) handlePipelineCancel(args []string) {
 	}
 
 	output.PrintSuccess(fmt.Sprintf("Pipeline #%d cancelled — status: %s", pl.ID, pl.Status))
-	fmt.Println()
 }

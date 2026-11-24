@@ -165,7 +165,6 @@ func (r *replState) handleMRReview(args []string) {
 	} else {
 		output.PrintSuccess("Project context updated with MR review")
 	}
-	fmt.Println()
 
 	r.storeReview(project, mrNumber, mrInfo.Title, filename, output.GenerateGitLabComment(review))
 	r.recordEffect(audit.CategoryFileWrite)
@@ -273,7 +272,6 @@ func (r *replState) postReviewComment(project string, mrNumber int) {
 	output.PrintSuccess(fmt.Sprintf("Review posted to MR #%d", mrNumber))
 	output.PrintURLOpen(noteURL)
 	r.auditOutcome(r.lastAIEventID, audit.OutcomeAccepted, nil)
-	fmt.Println()
 }
 
 // ─── MR Status ───────────────────────────────────────────────────────────────
@@ -313,7 +311,6 @@ func (r *replState) handleMRStatus(args []string) {
 	} else {
 		output.PrintMRListTable(openMRs, fmt.Sprintf("Open MRs — %s", project))
 	}
-	fmt.Println()
 
 	r.refreshCacheAsync()
 }
@@ -452,7 +449,6 @@ func (r *replState) handleMROpen(args []string) {
 		output.PrintSuccess(fmt.Sprintf("Detected linked ticket: #%d (from branch name)", ticketNumber))
 	}
 
-	fmt.Println()
 	s := output.NewLoader(" Generating MR description...")
 	s.Start()
 
@@ -479,11 +475,9 @@ func (r *replState) handleMROpen(args []string) {
 		return
 	}
 
-	fmt.Println()
 	output.PrintSuccess(fmt.Sprintf("MR #%d created: %s", mr.IID, mr.Title))
 	output.PrintSuccess(fmt.Sprintf("Branch: %s → %s", sourceBranch, targetBranch))
 	output.PrintURLOpen(mr.WebURL)
-	fmt.Println()
 
 	r.recordEffect(audit.CategoryMRCreated)
 	r.refreshCacheAsync()
@@ -524,7 +518,6 @@ func (r *replState) handleMRMerge(args []string) {
 	}
 
 	output.PrintSuccess(fmt.Sprintf("MR #%d merged successfully", mrNumber))
-	fmt.Println()
 }
 
 // ─── MR Approve / Unapprove ─────────────────────────────────────────────────
@@ -548,7 +541,6 @@ func (r *replState) handleMRApprove(args []string) {
 		return
 	}
 	output.PrintSuccess(fmt.Sprintf("MR #%d approved", mrNumber))
-	fmt.Println()
 }
 
 func (r *replState) handleMRUnapprove(args []string) {
@@ -570,7 +562,6 @@ func (r *replState) handleMRUnapprove(args []string) {
 		return
 	}
 	output.PrintSuccess(fmt.Sprintf("MR #%d approval removed", mrNumber))
-	fmt.Println()
 }
 
 // ─── MR Rebase ───────────────────────────────────────────────────────────────
@@ -594,7 +585,6 @@ func (r *replState) handleMRRebase(args []string) {
 		return
 	}
 	output.PrintSuccess(fmt.Sprintf("MR #%d rebase initiated", mrNumber))
-	fmt.Println()
 }
 
 // ─── MR Update ───────────────────────────────────────────────────────────────
@@ -670,9 +660,7 @@ func (r *replState) handleMRUpdate(args []string) {
 		title = bInfo.CommitTitle
 	}
 
-	fmt.Println()
 	output.PrintSuccess(fmt.Sprintf("Title: %s", title))
-	fmt.Println()
 	output.PrintSuccess("Description:")
 	fmt.Println(desc)
 	fmt.Println()
@@ -692,7 +680,6 @@ func (r *replState) handleMRUpdate(args []string) {
 	}
 	output.PrintSuccess(fmt.Sprintf("MR #%d updated: %s", mr.IID, mr.Title))
 	output.PrintURLOpen(mr.WebURL)
-	fmt.Println()
 }
 
 // ─── MR Close / Reopen ──────────────────────────────────────────────────────
@@ -719,7 +706,6 @@ func (r *replState) handleMRClose(args []string) {
 		return
 	}
 	output.PrintSuccess(fmt.Sprintf("MR #%d closed", mrNumber))
-	fmt.Println()
 }
 
 func (r *replState) handleMRReopen(args []string) {
@@ -741,7 +727,6 @@ func (r *replState) handleMRReopen(args []string) {
 		return
 	}
 	output.PrintSuccess(fmt.Sprintf("MR #%d reopened", mrNumber))
-	fmt.Println()
 }
 
 // ─── Shared MR Arg Parser ───────────────────────────────────────────────────

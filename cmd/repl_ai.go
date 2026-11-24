@@ -290,5 +290,4 @@ func (r *replState) handleChat(input string) {
 
 	fmt.Println()
 	fmt.Println(response)
-	fmt.Println()
 }

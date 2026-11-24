@@ -85,9 +85,11 @@ func (r *replState) interactiveSelect(title string, options []string) int {
 	}
 
 	cleanup := func() {
-		// Move from first option line down past all options, then clear blank+hint lines
+		// Move from first option line down past all options, clear blank+hint
+		// lines, then return to the blank line so the next output reuses it
+		// instead of leaving two empty lines behind.
 		write(fmt.Sprintf("\033[%dB", numOpts))
-		write("\r\033[K\r\n\033[K\r\n")
+		write("\r\033[K\r\n\033[K\033[1A\r")
 	}
 
 	buf := make([]byte, 3)

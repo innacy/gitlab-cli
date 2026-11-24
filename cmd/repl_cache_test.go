@@ -192,3 +192,21 @@ func TestWaitForCache_ReturnsLimitedProjectsQuickly(t *testing.T) {
 		t.Errorf("expected %d projects from waitForCache after startup, got %d", startupProjectLimit, len(projects))
 	}
 }
+
+func TestMatchProjectPrefersShortestPathAmongSameName(t *testing.T) {
+	cache := []models.ProjectInfo{
+		{Name: "ai-editor", Path: "cnips/pocs/ai-editor"},
+		{Name: "ai-editor", Path: "cnips/ai-editor"},
+		{Name: "other", Path: "cnips/other"},
+	}
+	path, others, fuzzy := matchProject(cache, "ai-editor")
+	if path != "cnips/ai-editor" || len(others) != 1 || others[0] != "cnips/pocs/ai-editor" || !fuzzy {
+		t.Fatalf("got %q %v %v", path, others, fuzzy)
+	}
+	if path, _, fuzzy := matchProject(cache, "cnips/pocs/ai-editor"); path != "cnips/pocs/ai-editor" || fuzzy {
+		t.Fatalf("exact path: got %q %v", path, fuzzy)
+	}
+	if path, _, _ := matchProject(cache, "nope"); path != "" {
+		t.Fatalf("no match: got %q", path)
+	}
+}

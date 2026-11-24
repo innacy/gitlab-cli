@@ -93,7 +93,6 @@ func (r *replState) handleConfig() {
 	if r.provider != nil {
 		theme.Muted.Printf("  Active session:      %s (@%s)\n", r.provider.Name(), r.provider.Username())
 	}
-	fmt.Println()
 }
 
 func (r *replState) showHelp() {
@@ -115,7 +114,6 @@ func (r *replState) showHelp() {
 
 	theme.Muted.Println("  Any unrecognized input is sent to AI as a question.")
 	theme.Muted.Println("  Tab = auto-complete | Up/Down = history | Ctrl+R = search history")
-	fmt.Println()
 }
 
 func boolStr(b bool) string {
@@ -177,7 +175,6 @@ func (r *replState) switchTeam(name string) {
 	if pf != "" {
 		output.PrintSuccess(fmt.Sprintf("Parent folder: %s", pf))
 	}
-	fmt.Println()
 }
 
 // ─── Switch Environment ──────────────────────────────────────────────────────

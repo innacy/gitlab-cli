@@ -225,7 +225,6 @@ func (r *replState) handleTicketsLabel(args []string) {
 		labelled++
 	}
 
-	fmt.Println()
 	if dryRun {
 		output.PrintSuccess("Dry run: no changes made.")
 		return

@@ -278,43 +278,54 @@ func (r *replState) smartRefresh() {
 }
 
 func (r *replState) resolveProject(input string) string {
-	cache := r.waitForCache()
-	if len(cache) == 0 {
+	// Search all projects: the startup cache only holds the most recent few.
+	cache := r.ensureFullCache()
+	path, others, fuzzy := matchProject(cache, input)
+	if path == "" {
 		return input
 	}
+	if fuzzy {
+		msg := fmt.Sprintf("Resolved '%s' → %s", input, path)
+		if len(others) > 0 {
+			msg += fmt.Sprintf(" (also: %s)", strings.Join(others, ", "))
+		}
+		output.PrintSuccess(msg)
+	}
+	return path
+}
 
+// matchProject finds the project input refers to. Tiers are tried in order;
+// the first tier with any match wins. Within a tier the shortest path wins
+// (cnips/ai-editor over cnips/pocs/ai-editor) and the rest come back as others.
+// fuzzy is false when input already was the exact path.
+func matchProject(cache []models.ProjectInfo, input string) (path string, others []string, fuzzy bool) {
 	lower := strings.ToLower(input)
-
-	for _, p := range cache {
-		if p.Path == input {
-			return p.Path
-		}
+	tiers := []func(p models.ProjectInfo) bool{
+		func(p models.ProjectInfo) bool { return p.Path == input },
+		func(p models.ProjectInfo) bool { return strings.ToLower(p.Path) == lower },
+		func(p models.ProjectInfo) bool { return p.Name == input },
+		func(p models.ProjectInfo) bool { return strings.ToLower(p.Name) == lower },
+		func(p models.ProjectInfo) bool { return strings.HasSuffix(strings.ToLower(p.Path), "/"+lower) },
 	}
-	for _, p := range cache {
-		if strings.ToLower(p.Path) == lower {
-			return p.Path
+	for i, match := range tiers {
+		var hits []string
+		for _, p := range cache {
+			if match(p) {
+				hits = append(hits, p.Path)
+			}
 		}
-	}
-	for _, p := range cache {
-		if p.Name == input {
-			output.PrintSuccess(fmt.Sprintf("Resolved '%s' → %s", input, p.Path))
-			return p.Path
+		if len(hits) == 0 {
+			continue
 		}
+		sort.SliceStable(hits, func(a, b int) bool {
+			if len(hits[a]) != len(hits[b]) {
+				return len(hits[a]) < len(hits[b])
+			}
+			return hits[a] < hits[b]
+		})
+		return hits[0], hits[1:], i > 1
 	}
-	for _, p := range cache {
-		if strings.ToLower(p.Name) == lower {
-			output.PrintSuccess(fmt.Sprintf("Resolved '%s' → %s", input, p.Path))
-			return p.Path
-		}
-	}
-	for _, p := range cache {
-		if strings.HasSuffix(strings.ToLower(p.Path), "/"+lower) {
-			output.PrintSuccess(fmt.Sprintf("Resolved '%s' → %s", input, p.Path))
-			return p.Path
-		}
-	}
-
-	return input
+	return "", nil, false
 }
 
 func (r *replState) resetIdle() {
@@ -430,6 +441,7 @@ func RunREPL(cfg *config.AppConfig) {
 
 	// run start command automatically
 	r.handleStart()
+	fmt.Println()
 
 	for {
 		line, err := rl.Readline()
@@ -460,6 +472,9 @@ func RunREPL(cfg *config.AppConfig) {
 			r.idleTimer.Stop()
 			return
 		}
+		// One blank line after every command (after "✻ Worked for"); handlers
+		// must not end with their own.
+		fmt.Println()
 	}
 }
 
@@ -610,7 +625,6 @@ func (r *replState) connect() bool {
 	r.username = prov.Username()
 	r.startedAt = time.Now()
 
-	fmt.Println()
 	output.PrintSuccess(fmt.Sprintf("Authenticated as %s (@%s)", prov.UserDisplayName(), prov.Username()))
 	output.PrintSuccess(fmt.Sprintf("Platform: %s", prov.Name()))
 	if r.cfg.Environment != "" {
@@ -635,7 +649,6 @@ func (r *replState) connect() bool {
 	}
 
 	output.PrintSuccess("Session started — ready for commands")
-	fmt.Println()
 
 	return true
 }
