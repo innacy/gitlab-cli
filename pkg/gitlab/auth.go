@@ -87,6 +87,9 @@ func FindProject(client *gogitlab.Client, projectPath string) (*gogitlab.Project
 	if err != nil {
 		return nil, utils.NewProjectNotFoundError(fmt.Sprintf("%s (API error: %v)", projectPath, err))
 	}
+	if project.Archived {
+		return nil, utils.NewProjectNotFoundError(fmt.Sprintf("%s (project is archived)", projectPath))
+	}
 	return project, nil
 }
 
@@ -126,6 +129,7 @@ func (c *Client) listProjectsOpts(since *time.Time, maxPages int) ([]models.Proj
 	membership := true
 	opts := &gogitlab.ListProjectsOptions{
 		Membership: &membership,
+		Archived:   gogitlab.Ptr(false),
 		OrderBy:    gogitlab.Ptr("last_activity_at"),
 		Sort:       gogitlab.Ptr("desc"),
 		ListOptions: gogitlab.ListOptions{
